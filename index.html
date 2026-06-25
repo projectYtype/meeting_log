@@ -768,6 +768,18 @@
       }
 
       if (!currentEvent) {
+        // ✅ 추가된 부분: 데이터를 불러오는 중일 때는 로딩 화면을 보여줍니다.
+        if (isSyncing) {
+          return (
+            <div className="min-h-[100dvh] bg-gray-100 flex flex-col items-center justify-center p-6 pb-safe pt-safe text-center">
+              <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+              <h2 className="text-xl font-bold text-gray-800 mb-2">데이터를 불러오는 중입니다...</h2>
+              <p className="text-gray-500 mb-8 px-10">최신 스케줄을 동기화하고 있습니다.</p>
+            </div>
+          );
+        }
+
+        // 동기화가 끝났는데도 진짜 데이터가 없을 때만 이 화면을 보여줍니다.
         return (
           <div className="min-h-[100dvh] bg-gray-100 flex flex-col items-center justify-center p-6 pb-safe pt-safe text-center">
             <div className="w-20 h-20 bg-gray-200 rounded-full flex items-center justify-center mb-4"><IconUser /></div>
