@@ -531,16 +531,18 @@
 
           const dateOnly = ev.config.dates[targetDayIdx] || getToday();
           const matchObj = ev.matches?.[targetDayIdx]?.[targetTime] || {};
+          const walkinId = isComp ? matchObj[targetObj?.id] : Object.keys(matchObj).find(k => matchObj[k] === targetObj?.id);
           
-          // 🌟 마스터 권한 대응: targetObj 대신 matchObj에서 직접 ID 추출
-          const compId = Object.keys(matchObj)[0];
-          const buyerId = matchObj[compId];
-          
-          const compObj = ev.companies?.find(c => c.id === compId);
-          const buyerObj = ev.buyers?.find(b => b.id === buyerId);
-
-          const finalBuyerName = buyerObj ? buyerObj.company : '현장방문 (미등록 바이어)';
-          const finalCompanyName = compObj ? compObj.name : '알 수 없음';
+          let finalBuyerName = "";
+          let finalCompanyName = "";
+          if (isComp) {
+              finalBuyerName = "현장방문 (미등록 바이어)";
+              finalCompanyName = targetObj.name;
+          } else {
+              finalBuyerName = targetObj.company;
+              const cObj = ev.companies?.find(c => c.id === walkinId);
+              finalCompanyName = cObj ? cObj.name : '알 수 없음';
+          }
 
           fetch(LOG_GAS_URL, {
               method: 'POST',
@@ -555,18 +557,13 @@
           }).catch(err => console.error("일지 삭제 에러:", err));
 
           if (ev.matches?.[targetDayIdx]?.[targetTime]) {
-            delete ev.matches[targetDayIdx][targetTime];
-            
-            if (targetObj) {
-              const walkinId = isComp ? matchObj[targetObj.id] : Object.keys(matchObj).find(k => matchObj[k] === targetObj.id);
-              if (walkinId) {
-                if (isComp) ev.buyers = (ev.buyers || []).filter(b => b.id !== walkinId);
-                else ev.companies = (ev.companies || []).filter(c => c.id !== walkinId);
+            delete ev.matches[targetDayIdx][targetTime]; 
+            if (walkinId) {
+              if (isComp) {
+                ev.buyers = (ev.buyers || []).filter(b => b.id !== walkinId);
+              } else {
+                ev.companies = (ev.companies || []).filter(c => c.id !== walkinId);
               }
-            } else {
-              // 🌟 마스터(Admin)일 때는 walkin_ 으로 생성된 임시 요소를 직접 체크해서 지워줍니다.
-              if (compId && compId.startsWith('walkin_')) ev.companies = (ev.companies || []).filter(c => c.id !== compId);
-              if (buyerId && buyerId.startsWith('walkin_')) ev.buyers = (ev.buyers || []).filter(b => b.id !== buyerId);
             }
           }
 
@@ -599,14 +596,18 @@
           const ev = newEventsDB[eventId];
           
           const dateOnly = ev.config.dates[dayIdx] || getToday();
-     
-          // 🌟 마스터 권한 대응: targetObj 대신 cId와 matches에서 직접 회사/바이어 오브젝트 매칭
-          const compObj = ev.companies?.find(c => c.id === cId);
-          const bId = ev.matches?.[dayIdx]?.[time]?.[cId];
-          const buyerObj = ev.buyers?.find(b => b.id === bId);
-
-          const finalBuyerName = buyerObj ? buyerObj.company : '알 수 없음';
-          const finalCompanyName = compObj ? compObj.name : '알 수 없음';
+          let finalBuyerName = "";
+          let finalCompanyName = "";
+          if (!isComp) {
+              finalBuyerName = targetObj.company;
+              const cObj = ev.companies?.find(c => c.id === cId);
+              finalCompanyName = cObj ? cObj.name : '알 수 없음';
+          } else {
+              const bIdForLog = ev.matches?.[dayIdx]?.[time]?.[cId];
+              const bObj = ev.buyers?.find(b => b.id === bIdForLog);
+              finalBuyerName = bObj ? bObj.company : '알 수 없음';
+              finalCompanyName = targetObj.name;
+          }
 
           fetch(LOG_GAS_URL, {
               method: 'POST',
@@ -825,72 +826,6 @@
           setCurrentEvent(newEventsDB[eventId]);
           saveToBackend(newEventsDB);
         };
-const deleteLogByAdmin = (dayIdx, time, cId) => {
-          showConfirm('이 상담 일지(및 현장 스케줄)를 정말 삭제하시겠습니까?', () => {
-            const newEventsDB = JSON.parse(JSON.stringify(eventsDB));
-            const ev = newEventsDB[eventId];
-            
-            const dateOnly = ev.config.dates[dayIdx] || new Date().toISOString().split('T')[0];
-            const isWalkin = time.includes('현장');
-            
-            let finalBuyerName = "";
-            let finalCompanyName = "";
-            
-            // 현장 매칭인지 사전 매칭인지 판별하여 시트 삭제에 필요한 이름 추출
-            if (isWalkin) {
-               const matchObj = ev.matches?.[dayIdx]?.[time] || {};
-               const bId = matchObj[cId];
-               const compObj = ev.companies?.find(c => c.id === cId);
-               const buyerObj = ev.buyers?.find(b => b.id === bId);
-               finalBuyerName = buyerObj ? buyerObj.company : '현장방문 (미등록 바이어)';
-               finalCompanyName = compObj ? compObj.name : '알 수 없음';
-               
-               // 현장 매칭 데이터 찌꺼기 깔끔하게 청소
-               if (ev.matches?.[dayIdx]?.[time]) {
-                 delete ev.matches[dayIdx][time];
-                 if (cId && cId.startsWith('walkin_')) ev.companies = (ev.companies || []).filter(c => c.id !== cId);
-                 if (bId && bId.startsWith('walkin_')) ev.buyers = (ev.buyers || []).filter(b => b.id !== bId);
-               }
-               if (ev.onsiteMarks?.[dayIdx]?.[time]) delete ev.onsiteMarks[dayIdx][time];
-               if (ev.liveStatus?.[dayIdx]?.[time]) delete ev.liveStatus[dayIdx][time];
-            } else {
-               const bId = ev.matches?.[dayIdx]?.[time]?.[cId];
-               const compObj = ev.companies?.find(c => c.id === cId);
-               const buyerObj = ev.buyers?.find(b => b.id === bId);
-               finalBuyerName = buyerObj ? buyerObj.company : '알 수 없음';
-               finalCompanyName = compObj ? compObj.name : '알 수 없음';
-            }
-
-            // 구글 시트로 삭제 요청 쏘기
-            fetch(LOG_GAS_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify({
-                    action: 'delete',
-                    date: dateOnly,
-                    sessionTime: time,
-                    buyerName: finalBuyerName,
-                    companyName: finalCompanyName
-                })
-            }).catch(err => console.error("관리자 일지 삭제 에러:", err));
-
-            // 로컬 데이터(JSON) 일지 날리기
-            if (ev.meetingResults?.[dayIdx]?.[time]?.[cId]) {
-              delete ev.meetingResults[dayIdx][time][cId];
-            }
-            // 진행 상태를 다시 대기중으로 리셋
-            if (ev.liveStatus?.[dayIdx]?.[time]?.[cId] === 'submitted' || ev.liveStatus?.[dayIdx]?.[time]?.[cId] === 'completed') {
-              ev.liveStatus[dayIdx][time][cId] = 'waiting';
-            }
-
-            ev.lastModified = Math.max(Date.now(), (ev.lastModified || 0) + 2000);
-            setEventsDB(newEventsDB);
-            setCurrentEvent(ev);
-            saveToBackend(newEventsDB);
-            showAlert('관리자 권한으로 일지가 성공적으로 삭제되었습니다.');
-          });
-        };
-      
 
         const addField = () => {
           const newFields = [...adminFields, { id: `custom_${Date.now()}`, label: '새 문항', type: 'text', required: false }];
@@ -1064,18 +999,11 @@ const deleteLogByAdmin = (dayIdx, time, cId) => {
                             if (comp) targetName = comp.name;
                             else if (buyer) targetName = `${buyer.company} (${buyer.name})`;
 
-                           return (
+                            return (
                               <div key={`${dayIdx}-${time}-${cId}`} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-2">
                                 <div className="flex justify-between items-center border-b border-gray-100 pb-2">
-                                  {/* 👇 쓰레기통 아이콘이 예쁘게 들어가도록 flex로 묶음 👇 */}
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded">{dayIdx + 1}일차 | {time}</span>
-                                    <span className="text-xs text-gray-500 font-semibold">{targetName}</span>
-                                  </div>
-                                  <button onClick={() => deleteLogByAdmin(dayIdx, time, cId)} className="text-red-500 hover:bg-red-50 p-1.5 rounded transition-colors" title="일지 삭제">
-                                    <IconTrash />
-                                  </button>
-                                  {/* 👆 수정 끝 👆 */}
+                                  <span className="text-xs text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded">{dayIdx + 1}일차 | {time}</span>
+                                  <span className="text-xs text-gray-500 font-semibold">{targetName}</span>
                                 </div>
                                 <div className="space-y-2 mt-1">
                                   {Object.entries(data).map(([k, v]) => {
