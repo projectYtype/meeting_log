@@ -356,7 +356,8 @@
                 assignedEvents: eventKeys
               };
               setLoginUser(user);
-              localStorage.setItem('b2b_interp_session', JSON.stringify(user));
+              // ✅ 수정된 부분: b2b_v2_interp_session 으로 통일
+              localStorage.setItem('b2b_v2_interp_session', JSON.stringify(user));
               setAccountsDB(accounts);
               setEventsDB(realEvents);
               
@@ -391,7 +392,8 @@
               }
 
               setLoginUser(user);
-              localStorage.setItem('b2b_interp_session', JSON.stringify(user));
+              // ✅ 수정된 부분: b2b_v2_interp_session 으로 통일
+              localStorage.setItem('b2b_v2_interp_session', JSON.stringify(user));
               setAccountsDB(accounts);
               setEventsDB(realEvents);
               
@@ -409,9 +411,11 @@
             setIsSyncing(false);
           });
       };
+      
       const handleLogout = () => {
         setLoginUser(null);
-        localStorage.removeItem('b2b_interp_session');
+        // ✅ 수정된 부분: b2b_v2_interp_session 으로 통일
+        localStorage.removeItem('b2b_v2_interp_session');
         setEventId('');
         setCurrentEvent(null);
       };
