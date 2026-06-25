@@ -509,7 +509,8 @@
             companyName: finalCompanyName,
             meetingType: isOnsite ? '현장 미팅' : '사전 미팅',
             sessionTime: targetTime,
-            result: data
+            result: data,
+            eventName: ev.eventName  // 🌟 핵심: P열에 들어갈 행사명 데이터 전송!
         };
 
         fetch(LOG_GAS_URL, {
