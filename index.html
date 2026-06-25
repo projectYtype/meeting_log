@@ -531,18 +531,16 @@
 
           const dateOnly = ev.config.dates[targetDayIdx] || getToday();
           const matchObj = ev.matches?.[targetDayIdx]?.[targetTime] || {};
-          const walkinId = isComp ? matchObj[targetObj?.id] : Object.keys(matchObj).find(k => matchObj[k] === targetObj?.id);
           
-          let finalBuyerName = "";
-          let finalCompanyName = "";
-          if (isComp) {
-              finalBuyerName = "현장방문 (미등록 바이어)";
-              finalCompanyName = targetObj.name;
-          } else {
-              finalBuyerName = targetObj.company;
-              const cObj = ev.companies?.find(c => c.id === walkinId);
-              finalCompanyName = cObj ? cObj.name : '알 수 없음';
-          }
+          // 🌟 마스터 권한 대응: targetObj 대신 matchObj에서 직접 ID 추출
+          const compId = Object.keys(matchObj)[0];
+          const buyerId = matchObj[compId];
+          
+          const compObj = ev.companies?.find(c => c.id === compId);
+          const buyerObj = ev.buyers?.find(b => b.id === buyerId);
+
+          const finalBuyerName = buyerObj ? buyerObj.company : '현장방문 (미등록 바이어)';
+          const finalCompanyName = compObj ? compObj.name : '알 수 없음';
 
           fetch(LOG_GAS_URL, {
               method: 'POST',
@@ -557,13 +555,18 @@
           }).catch(err => console.error("일지 삭제 에러:", err));
 
           if (ev.matches?.[targetDayIdx]?.[targetTime]) {
-            delete ev.matches[targetDayIdx][targetTime]; 
-            if (walkinId) {
-              if (isComp) {
-                ev.buyers = (ev.buyers || []).filter(b => b.id !== walkinId);
-              } else {
-                ev.companies = (ev.companies || []).filter(c => c.id !== walkinId);
+            delete ev.matches[targetDayIdx][targetTime];
+            
+            if (targetObj) {
+              const walkinId = isComp ? matchObj[targetObj.id] : Object.keys(matchObj).find(k => matchObj[k] === targetObj.id);
+              if (walkinId) {
+                if (isComp) ev.buyers = (ev.buyers || []).filter(b => b.id !== walkinId);
+                else ev.companies = (ev.companies || []).filter(c => c.id !== walkinId);
               }
+            } else {
+              // 🌟 마스터(Admin)일 때는 walkin_ 으로 생성된 임시 요소를 직접 체크해서 지워줍니다.
+              if (compId && compId.startsWith('walkin_')) ev.companies = (ev.companies || []).filter(c => c.id !== compId);
+              if (buyerId && buyerId.startsWith('walkin_')) ev.buyers = (ev.buyers || []).filter(b => b.id !== buyerId);
             }
           }
 
@@ -596,18 +599,14 @@
           const ev = newEventsDB[eventId];
           
           const dateOnly = ev.config.dates[dayIdx] || getToday();
-          let finalBuyerName = "";
-          let finalCompanyName = "";
-          if (!isComp) {
-              finalBuyerName = targetObj.company;
-              const cObj = ev.companies?.find(c => c.id === cId);
-              finalCompanyName = cObj ? cObj.name : '알 수 없음';
-          } else {
-              const bIdForLog = ev.matches?.[dayIdx]?.[time]?.[cId];
-              const bObj = ev.buyers?.find(b => b.id === bIdForLog);
-              finalBuyerName = bObj ? bObj.company : '알 수 없음';
-              finalCompanyName = targetObj.name;
-          }
+     
+          // 🌟 마스터 권한 대응: targetObj 대신 cId와 matches에서 직접 회사/바이어 오브젝트 매칭
+          const compObj = ev.companies?.find(c => c.id === cId);
+          const bId = ev.matches?.[dayIdx]?.[time]?.[cId];
+          const buyerObj = ev.buyers?.find(b => b.id === bId);
+
+          const finalBuyerName = buyerObj ? buyerObj.company : '알 수 없음';
+          const finalCompanyName = compObj ? compObj.name : '알 수 없음';
 
           fetch(LOG_GAS_URL, {
               method: 'POST',
