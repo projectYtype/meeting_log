@@ -1,0 +1,1528 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#2563eb">
+  
+  <title>스케줄 매니저</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+
+  <style>
+    /* 모바일 네이티브 앱 환경 설정 */
+    html, body {
+      width: 100%;
+      height: 100%;
+      background-color: #f3f4f6;
+      -webkit-tap-highlight-color: transparent;
+      overscroll-behavior-y: none; 
+    }
+    
+    /* 아이폰 노치 및 홈 인디케이터 안전 영역 */
+    .safe-area-pt { padding-top: max(env(safe-area-inset-top), 1.5rem); }
+    .safe-area-pb { padding-bottom: max(env(safe-area-inset-bottom), 1.5rem); }
+    
+    /* 부드러운 스크롤 (iOS 스크롤 버벅임 개선) */
+    .overflow-y-auto, .overflow-x-auto {
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* 커스텀 스크롤바 숨김 */
+    ::-webkit-scrollbar { display: none; }
+    
+    /* 애니메이션 */
+    @keyframes slideUp { 
+      from { transform: translateY(100%); } 
+      to { transform: translateY(0); } 
+    }
+    .bottom-sheet { animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+    
+    /* 탭 가로 스크롤바 숨김 */
+    .nav-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    
+    /* iOS 입력창 자동 확대 방지를 위한 폰트 고정 */
+    input, textarea, select { font-size: 16px !important; }
+  </style>
+</head>
+<body class="text-gray-800 antialiased select-none">
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="react">
+  /** @jsxRuntime classic */
+  /** @jsx React.createElement */
+  /** @jsxFrag React.Fragment */
+    const { useState, useEffect, useRef, useMemo } = React;
+
+    // 🔴 [중요] 기존 시스템과 동일한 구글 시트 URL
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbxO3gHGZbsBmjaX-hfFHP-s7trR6OEKj_Rw-3G5-B0ehMOC3JTl1h2r7rEF8M3XmsqO/exec';
+    const LOG_GAS_URL = 'https://script.google.com/macros/s/AKfycbyyAHB5FaCt63o1FBP_Ik3cjjG3YSMW41IQcXXcWN8riwcc5asDCjhel9wQkKhecDNpvQ/exec';
+
+    // ✅ 원인 해결: 캔버스 환경의 파이어베이스 주입을 무시하고 강제로 GAS(구글 시트)만 바라보도록 false로 고정합니다.
+    const isCloudEnabled = false; 
+
+    // 아이콘 컴포넌트
+    const IconUser = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>;
+    const IconClock = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>;
+    const IconCheck = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>;
+    const IconEdit = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>;
+    const IconLogout = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>;
+    const IconHelp = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>;
+    const IconSettings = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>;
+    const IconUsers = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>;
+    const IconPlus = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>;
+    const IconTrash = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>;
+    const IconDocument = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>;
+
+    function App() {
+      // --- 상태 관리 ---
+      const [loginUser, setLoginUser] = useState(() => {
+        try {
+          return JSON.parse(localStorage.getItem('b2b_v2_interp_session'));
+        } catch (e) { return null; }
+      });
+      const [loginInput, setLoginInput] = useState({ id: '', pw: '' });
+      const [loginError, setLoginError] = useState('');
+      
+      const [eventsDB, setEventsDB] = useState({});
+      const [accountsDB, setAccountsDB] = useState([]);
+      const [eventId, setEventId] = useState('');
+      const eventIdRef = useRef(eventId);
+      useEffect(() => { eventIdRef.current = eventId; }, [eventId]);
+      const [currentEvent, setCurrentEvent] = useState(null);
+      
+      const [selectedDayIdx, setSelectedDayIdx] = useState(0);
+      const [scheduleTab, setScheduleTab] = useState('regular');
+      const [adminLogTab, setAdminLogTab] = useState('regular');
+      const [isSyncing, setIsSyncing] = useState(false);
+      const [showManual, setShowManual] = useState(false);
+
+      // 모달 상태 (onsiteTime 속성 추가)
+      const [statusModal, setStatusModal] = useState({ isOpen: false, dayIdx: 0, time: '', cId: '', currentStatus: '' });
+      const [resultModal, setResultModal] = useState({ isOpen: false, dayIdx: 0, time: '', cId: '', data: {}, isOnsite: false, opponentName: '', onsiteTime: '' });
+      const [dialog, setDialog] = useState({ isOpen: false, type: 'alert', message: '', onConfirm: null });
+
+      const showAlert = (message) => setDialog({ isOpen: true, type: 'alert', message, onConfirm: null });
+      const showConfirm = (message, onConfirm) => setDialog({ isOpen: true, type: 'confirm', message, onConfirm });
+
+      // 현재 시간 (카운트다운 용도)
+      const [now, setNow] = useState(new Date());
+
+      // 이미지 기반 기본 커스텀 문항 세팅 (줄바꿈 오류 해결)
+      const defaultCustomFields = [
+        { id: 'consultCategory', label: '1. 상담 내용 (분류)', type: 'checkbox', options: '회사/제품소개, 제품/샘플 거래, 파트너쉽 체결, 계약체결, 기타', required: true },
+        { id: 'content', label: '상담 내용 상세 기입', type: 'textarea', required: true },
+        { id: 'futureAction', label: '2. 향후 추진 방향', type: 'checkbox', options: '(지속소통) 자료 송부 및 검토, 추가 미팅 제안, 회사 방문, 향후 추진 내용 없음', required: true },
+        { id: 'satisfaction', label: '3. 상담회 매칭 만족도', type: 'radio', options: '매우 높음, 높음, 보통, 낮음, 매우 낮음', required: true },
+        { id: 'satisfactionReason', label: '만족도 사유 기입', type: 'text', required: true },
+        { id: 'consultAmount', label: '4. 상담금액 (USD) *예시: 10000', type: 'number', required: true },
+        { id: 'contractAmount', label: '4. 계약체결액 (USD) *예시: 5000', type: 'number', required: true },
+        { id: 'promoAmount', label: '4. 계약추진금액 (USD)', type: 'number', required: true },
+        { id: 'otherAchievement', label: '4. 기타 성과 (MOU/MOC/LOI/실계약 등)', type: 'text', required: true }
+      ];
+      
+      const customFieldsConfig = currentEvent?.config?.customFields || defaultCustomFields;
+
+      useEffect(() => {
+        const timer = setInterval(() => setNow(new Date()), 20000); // 20초마다 갱신
+        return () => clearInterval(timer);
+      }, []);
+
+      // 데이터 로드 공통 함수
+      const processLoadedData = (data, currentUser) => {
+        if (!data) return;
+        
+        // 🌟 [교정] 구글 시트 새 규격(events, accounts) 완벽하게 대응 파싱
+        const accounts = data.accounts || data.__accounts || [];
+        const realEvents = data.events || {};
+        
+        setAccountsDB(accounts);
+        setEventsDB(realEvents);
+        
+        if (currentUser) {
+          // 최고 관리자 계정일 경우 모든 행사 접근 허용
+          if (currentUser.role === 'admin') {
+            const eventKeys = Object.keys(realEvents);
+            let activeEventId = eventIdRef.current;
+            if (eventKeys.length > 0) {
+              if (!activeEventId || !realEvents[activeEventId]) {
+                activeEventId = eventKeys[0];
+              }
+              setEventId(activeEventId);
+              setCurrentEvent(realEvents[activeEventId]);
+            }
+            return;
+          }
+
+          // 일반 통역사 계정인 경우 배정된 행사 매칭
+          const myAcc = accounts.find(a => a.username === currentUser.id);
+          if (myAcc && myAcc.assignedEvents && myAcc.assignedEvents.length > 0) {
+            let activeEventId = eventIdRef.current;
+            if (!activeEventId || !realEvents[activeEventId] || !myAcc.assignedEvents.includes(activeEventId)) {
+              activeEventId = myAcc.assignedEvents[myAcc.assignedEvents.length - 1];
+            }
+            setEventId(activeEventId);
+            setCurrentEvent(realEvents[activeEventId]);
+            setLoginUser(prev => ({
+              ...prev, 
+              assignedTargets: myAcc.assignedTargets || {}, 
+              assignedEvents: myAcc.assignedEvents || []
+            }));
+          }
+        }
+        setIsSyncing(false);
+      };
+
+      // 초기 데이터 로드 (GAS 전용)
+      useEffect(() => {
+        if (!loginUser && !localStorage.getItem('b2b_v2_manual_seen')) {
+          setShowManual(true);
+        }
+
+        const fetchGAS = () => {
+          setIsSyncing(true);
+          fetch(`${GAS_URL}?t=${Date.now()}`)
+            .then(res => res.json())
+            .then(data => processLoadedData(data, loginUser))
+            .catch(err => {
+              console.error("초기 로드 에러:", err);
+              setIsSyncing(false);
+            });
+        };
+        
+        fetchGAS();
+        const interval = setInterval(fetchGAS, 15000);
+        return () => clearInterval(interval);
+        
+      }, [loginUser?.id]);
+
+      // --- 파생 변수 및 남은 시간 계산 ---
+      const targetInfo = loginUser?.assignedTargets?.[eventId];
+      const isComp = targetInfo?.type === 'company';
+      const targetObj = currentEvent && targetInfo ? (isComp 
+        ? currentEvent.companies?.find(c => c.id === targetInfo.id) 
+        : currentEvent.buyers?.find(b => b.id === targetInfo.id)) : null;
+
+      // 행사의 기본 타임 세션 추출 (현장 매칭 선택용도로 사용)
+      const getBaseTimeSlots = useMemo(() => {
+        if (!currentEvent) return [];
+        let slots = [];
+        const startTimeStr = currentEvent.config?.startTime || '10:00';
+        let cur = parseInt(startTimeStr.split(':')[0]) * 60 + parseInt(startTimeStr.split(':')[1]);
+        const len = currentEvent.config?.sessionLength || 30;
+        const sessions = currentEvent.config?.sessionsPerDay || 10;
+        
+        for(let i=0; i<sessions; i++) {
+          let end = cur + len;
+          slots.push(`${Math.floor(cur/60).toString().padStart(2,'0')}:${(cur%60).toString().padStart(2,'0')}~${Math.floor(end/60).toString().padStart(2,'0')}:${(end%60).toString().padStart(2,'0')}`);
+          cur = end;
+        }
+        return slots;
+      }, [currentEvent]);
+
+      const nextMeetingInfo = useMemo(() => {
+          if (!currentEvent || !targetObj) return null;
+          const allMyMeetings = [];
+
+          (currentEvent.config?.dates || []).forEach((dateStr, dayIdx) => {
+              const parts = dateStr.split('-');
+              if(parts.length !== 3) return;
+              const year = parseInt(parts[0]);
+              const month = parseInt(parts[1]) - 1; 
+              const day = parseInt(parts[2]);
+
+              const dayMatches = currentEvent.matches?.[dayIdx] || {};
+              const extraSlots = Object.keys(dayMatches).filter(k => {
+                if (getBaseTimeSlots.includes(k)) return false;
+                if (isComp) return Object.keys(dayMatches[k]).includes(targetObj.id);
+                else return Object.values(dayMatches[k]).includes(targetObj.id);
+              });
+              const allSlots = [...getBaseTimeSlots, ...extraSlots];
+
+              allSlots.forEach(time => {
+                  const timeMatch = dayMatches[time] || {};
+                  let cId = isComp ? targetObj.id : Object.keys(timeMatch).find(k => timeMatch[k] === targetObj.id);
+                  let bId = timeMatch[cId];
+                  if (!bId || !cId) return;
+
+                  let startH, startM;
+                  const startStr = time.split('~')[0];
+                  if (startStr.includes('현장 매칭')) {
+                       const match = startStr.match(/\((\d{2}):(\d{2})\)/) || startStr.match(/\((\d{2}:\d{2})/);
+                       if(match) { 
+                         const tSplit = match[1].split(':');
+                         startH = parseInt(tSplit[0]); startM = parseInt(tSplit[1]) || parseInt(match[2]); 
+                       }
+                       else return;
+                  } else {
+                       const timeParts = startStr.split(':');
+                       if(timeParts.length !== 2) return;
+                       startH = parseInt(timeParts[0]); startM = parseInt(timeParts[1]);
+                  }
+                  
+                  const meetingStart = new Date(year, month, day, startH, startM, 0);
+                  allMyMeetings.push({ dayIdx, time, meetingStart, bId, cId, startStr });
+              });
+          });
+
+          allMyMeetings.sort((a, b) => a.meetingStart - b.meetingStart);
+
+          for (let meeting of allMyMeetings) {
+              if (meeting.meetingStart > now) {
+                  const diffMs = meeting.meetingStart - now;
+                  const diffMins = Math.floor(diffMs / 60000);
+                  const days = Math.floor(diffMins / (60 * 24));
+                  const hours = Math.floor((diffMins % (60 * 24)) / 60);
+                  const mins = diffMins % 60;
+
+                  const oppCompany = isComp ? currentEvent.buyers?.find(b=>b.id===meeting.bId) : currentEvent.companies?.find(c=>c.id===meeting.cId);
+
+                  return {
+                      timeLabel: meeting.startStr,
+                      days: days,
+                      hours: hours,
+                      mins: mins,
+                      oppName: oppCompany ? (isComp ? `${oppCompany.company} (${oppCompany.name})` : oppCompany.name) : '알 수 없음',
+                      dayIdx: meeting.dayIdx
+                  };
+              }
+          }
+          return null;
+      }, [currentEvent, targetObj, isComp, now, getBaseTimeSlots]);
+
+
+      // --- 함수 정의 ---
+      const saveToBackend = async (newEventsDB) => {
+        setIsSyncing(true);
+        const payload = { action: 'save_events', data: newEventsDB };
+
+        fetch(GAS_URL, { 
+          method: 'POST', 
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
+          body: JSON.stringify(payload) 
+        })
+        .then(() => setIsSyncing(false))
+        .catch(() => { 
+          showAlert("저장 실패"); 
+          setIsSyncing(false); 
+        });
+      };
+
+      // ✅ 로그인 검증 로직
+      const handleLogin = (e) => {
+        e.preventDefault();
+        setIsSyncing(true);
+        setLoginError('');
+        
+        const inputId = loginInput.id.trim();
+        const inputPw = loginInput.pw.trim();
+        
+        if (!inputId || !inputPw) {
+          setLoginError('아이디와 비밀번호를 입력해주세요.');
+          setIsSyncing(false);
+          return;
+        }
+
+        fetch(`${GAS_URL}?t=${Date.now()}`)
+          .then(res => res.json())
+          .then(data => {
+            console.log("=== [스케줄 매니저] 구글 시트 동기화 로드 ===");
+            console.log("시트에서 가져온 계정(Accounts) 정보:", data.accounts);
+            console.log("시트에서 가져온 행사(Events) 정보:", data.events);
+            
+            const accounts = data.accounts || data.__accounts || [];
+            const realEvents = data.events || {};
+
+            // 1. 마스터 관리자 패스워드 예외처리 무조건 통과 조치
+            if (inputId === 'Bridging' && inputPw === 'bridging1004!!') {
+              const eventKeys = Object.keys(realEvents);
+              if (eventKeys.length === 0) {
+                setLoginError('시트에 등록된 행사 데이터가 없습니다. 마스터 앱에서 행사를 먼저 생성해 주세요.');
+                setIsSyncing(false);
+                return;
+              }
+              const user = { 
+                id: 'Bridging', 
+                role: 'admin', 
+                assignedTargets: {},
+                assignedEvents: eventKeys
+              };
+              setLoginUser(user);
+              localStorage.setItem('b2b_interp_session', JSON.stringify(user));
+              setAccountsDB(accounts);
+              setEventsDB(realEvents);
+              
+              const firstEventId = eventKeys[0];
+              setEventId(firstEventId);
+              setCurrentEvent(realEvents[firstEventId]);
+              setIsSyncing(false);
+              return;
+            }
+
+            // 2. Accounts 시트 데이터 대조 검증
+            let userAcc = accounts.find(a => a.username === inputId && a.password === inputPw);
+            
+            if (userAcc) {
+              if (userAcc.role !== 'interpreter' && userAcc.role !== 'admin') {
+                setLoginError('스케줄 매니저는 통역사 또는 관리자 계정만 이용 가능합니다.');
+                setIsSyncing(false);
+                return;
+              }
+
+              const user = { 
+                id: userAcc.username, 
+                role: userAcc.role, 
+                assignedTargets: userAcc.assignedTargets || {},
+                assignedEvents: userAcc.assignedEvents || []
+              };
+              
+              if (user.role === 'interpreter' && (!user.assignedEvents || user.assignedEvents.length === 0)) {
+                setLoginError('배정된 행사가 없는 통역사 계정입니다. 마스터 앱 권한설정에서 행사를 먼저 배정해주세요.');
+                setIsSyncing(false);
+                return;
+              }
+
+              setLoginUser(user);
+              localStorage.setItem('b2b_interp_session', JSON.stringify(user));
+              setAccountsDB(accounts);
+              setEventsDB(realEvents);
+              
+              const targetEventId = user.assignedEvents[user.assignedEvents.length - 1];
+              setEventId(targetEventId);
+              setCurrentEvent(realEvents[targetEventId] || null);
+            } else {
+              setLoginError('아이디 또는 비밀번호가 올바르지 않습니다.');
+            }
+            setIsSyncing(false);
+          })
+          .catch(err => {
+            console.error("통신 에러 원인:", err);
+            setLoginError('서버 연결 실패. 네트워크 상태나 배포 URL을 확인하세요.');
+            setIsSyncing(false);
+          });
+      };
+      const handleLogout = () => {
+        setLoginUser(null);
+        localStorage.removeItem('b2b_interp_session');
+        setEventId('');
+        setCurrentEvent(null);
+      };
+
+      const handleStatusChange = (newStatus) => {
+        const { dayIdx, time, cId } = statusModal;
+        const newEventsDB = JSON.parse(JSON.stringify(eventsDB));
+        if (!newEventsDB[eventId]) newEventsDB[eventId] = JSON.parse(JSON.stringify(currentEvent || {}));
+        if (!newEventsDB[eventId].liveStatus) newEventsDB[eventId].liveStatus = {};
+        if (!newEventsDB[eventId].liveStatus[dayIdx]) newEventsDB[eventId].liveStatus[dayIdx] = {};
+        if (!newEventsDB[eventId].liveStatus[dayIdx][time]) newEventsDB[eventId].liveStatus[dayIdx][time] = {};
+        newEventsDB[eventId].liveStatus[dayIdx][time][cId] = newStatus;
+        newEventsDB[eventId].lastModified = Math.max(Date.now(), (newEventsDB[eventId].lastModified || 0) + 2000);
+        setEventsDB(newEventsDB);
+        setCurrentEvent(newEventsDB[eventId]);
+        saveToBackend(newEventsDB);
+        setStatusModal({ isOpen: false });
+      };
+
+    const saveMeetingResult = () => {
+        const { dayIdx, time, cId, data, isOnsite, opponentName, onsiteTime } = resultModal;
+        
+        // 1. 필수 항목 검증
+        let isValid = true;
+        customFieldsConfig.forEach(field => {
+          if (field.required) {
+            const val = data[field.id];
+            if (val === undefined || val === null || val === '') {
+              isValid = false;
+            } else if (Array.isArray(val) && val.length === 0) {
+              isValid = false;
+            } else if (typeof val === 'string' && !val.trim()) {
+              isValid = false;
+            }
+          }
+        });
+
+        if (!isValid) {
+          showAlert('상담 일지의 필수 항목을 모두 입력해주세요.');
+          return;
+        }
+
+        const newEventsDB = JSON.parse(JSON.stringify(eventsDB));
+        if (!newEventsDB[eventId]) newEventsDB[eventId] = JSON.parse(JSON.stringify(currentEvent || {}));
+        const ev = newEventsDB[eventId];
+
+        let targetCId = cId;
+        let targetTime = time;
+        let finalBuyerName = "";
+
+        // 2. 원본 앱의 현장 매칭(Walk-in) 로직 적용
+        if (isOnsite) {
+          if (!opponentName || !opponentName.trim()) {
+            showAlert('상대방 소속 및 이름을 입력해주세요.');
+            return;
+          }
+          if (!onsiteTime) {
+            showAlert('상담 진행 시간(세션)을 선택해주세요.');
+            return;
+          }
+          
+          // 이미 작성된 현장 매칭을 "수정"하는 경우인지 확인
+          if (time && time.includes('현장 매칭')) {
+            targetTime = time;
+            targetCId = cId;
+          } else {
+            // 신규 현장 매칭 생성
+            const walkinId = `walkin_${Date.now()}`;
+            const uniqueNum = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+            targetTime = `현장 매칭 (${onsiteTime}) #${uniqueNum}`;
+
+            if (!ev.matches) ev.matches = {};
+            if (!ev.matches[dayIdx]) ev.matches[dayIdx] = {};
+            if (!ev.matches[dayIdx][targetTime]) ev.matches[dayIdx][targetTime] = {};
+
+            if (isComp) {
+              if (!ev.buyers) ev.buyers = [];
+              ev.buyers.push({ id: walkinId, name: opponentName, company: '현장방문' });
+              targetCId = targetObj.id;
+              ev.matches[dayIdx][targetTime][targetCId] = walkinId;
+              finalBuyerName = "현장방문 (미등록 바이어)";
+            } else {
+              if (!ev.companies) ev.companies = [];
+              ev.companies.push({ id: walkinId, name: opponentName, booth: '현장' });
+              targetCId = walkinId;
+              ev.matches[dayIdx][targetTime][targetCId] = targetObj.id;
+              finalBuyerName = targetObj.company;
+            }
+          }
+        } else {
+          // 정규 매칭일 경우
+          if (!isComp) {
+            finalBuyerName = targetObj.company;
+          } else {
+            const bIdForLog = currentEvent.matches?.[dayIdx]?.[time]?.[cId];
+            const bObj = currentEvent.buyers?.find(b => b.id === bIdForLog);
+            finalBuyerName = bObj ? bObj.company : '알 수 없음';
+          }
+        }
+
+        // 💡 3. 로컬 DB에 일지 저장 (이 부분이 있어야 내가 쓴 글을 다시 보고 수정할 수 있습니다!)
+        if (!ev.meetingResults) ev.meetingResults = {};
+        if (!ev.meetingResults[dayIdx]) ev.meetingResults[dayIdx] = {};
+        if (!ev.meetingResults[dayIdx][targetTime]) ev.meetingResults[dayIdx][targetTime] = {};
+        
+        ev.meetingResults[dayIdx][targetTime][targetCId] = data;
+
+        // 4. 상태를 '제출완료(submitted)'로 업데이트
+        if (!ev.liveStatus) ev.liveStatus = {};
+        if (!ev.liveStatus[dayIdx]) ev.liveStatus[dayIdx] = {};
+        if (!ev.liveStatus[dayIdx][targetTime]) ev.liveStatus[dayIdx][targetTime] = {};
+        ev.liveStatus[dayIdx][targetTime][targetCId] = 'submitted';
+        ev.lastModified = Math.max(Date.now(), (ev.lastModified || 0) + 2000);
+        setEventsDB(newEventsDB);
+        setCurrentEvent(ev);
+        saveToBackend(newEventsDB); // 메인 서버로 전체 데이터 전송
+
+        // 5. 구글 시트(일지 전용)로 전송 로직 유지
+        const dateOnly = currentEvent.config.dates[dayIdx] || getToday();
+
+        // 기업명 추출 로직 추가
+        let finalCompanyName = "";
+        if (isOnsite) {
+          if (isComp) {
+            finalCompanyName = targetObj.name;
+          } else {
+            finalCompanyName = opponentName; // 바이어 앱에서 현장 추가 시 기업명
+          }
+        } else {
+          if (isComp) {
+            finalCompanyName = targetObj.name;
+          } else {
+            const cIdForLog = Object.keys(currentEvent.matches?.[dayIdx]?.[time] || {}).find(cid => currentEvent.matches[dayIdx][time][cid] === targetObj.id);
+            const cObj = currentEvent.companies?.find(c => c.id === cIdForLog);
+            finalCompanyName = cObj ? cObj.name : '알 수 없음';
+          }
+        }
+
+        const logPayload = {
+            date: dateOnly,
+            buyerName: finalBuyerName,
+            companyName: finalCompanyName,
+            meetingType: isOnsite ? '현장 미팅' : '사전 미팅',
+            sessionTime: targetTime,
+            result: data
+        };
+
+        fetch(LOG_GAS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(logPayload)
+        }).catch(err => console.error("일지 전송 에러:", err));
+
+        setResultModal({ isOpen: false, data: {}, isOnsite: false, opponentName: '', onsiteTime: '' });
+        showAlert('저장 완료', '상담 일지가 성공적으로 저장/수정되었습니다!');
+      };
+
+     // ✅ 현장 방문 스케줄 자체를 통째로 날려버리는 함수
+      const deleteWalkinMeeting = (targetTime, targetDayIdx) => {
+        showConfirm('이 현장 방문 스케줄과 작성된 일지를 완전히 삭제하시겠습니까?', () => {
+          const newEventsDB = JSON.parse(JSON.stringify(eventsDB));
+          const ev = newEventsDB[eventId];
+
+          const dateOnly = ev.config.dates[targetDayIdx] || getToday();
+          const matchObj = ev.matches?.[targetDayIdx]?.[targetTime] || {};
+          const walkinId = isComp ? matchObj[targetObj?.id] : Object.keys(matchObj).find(k => matchObj[k] === targetObj?.id);
+          
+          let finalBuyerName = "";
+          let finalCompanyName = "";
+          if (isComp) {
+              finalBuyerName = "현장방문 (미등록 바이어)";
+              finalCompanyName = targetObj.name;
+          } else {
+              finalBuyerName = targetObj.company;
+              const cObj = ev.companies?.find(c => c.id === walkinId);
+              finalCompanyName = cObj ? cObj.name : '알 수 없음';
+          }
+
+          fetch(LOG_GAS_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify({
+                  action: 'delete',
+                  date: dateOnly,
+                  sessionTime: targetTime,
+                  buyerName: finalBuyerName,
+                  companyName: finalCompanyName
+              })
+          }).catch(err => console.error("일지 삭제 에러:", err));
+
+          if (ev.matches?.[targetDayIdx]?.[targetTime]) {
+            delete ev.matches[targetDayIdx][targetTime]; 
+            if (walkinId) {
+              if (isComp) {
+                ev.buyers = (ev.buyers || []).filter(b => b.id !== walkinId);
+              } else {
+                ev.companies = (ev.companies || []).filter(c => c.id !== walkinId);
+              }
+            }
+          }
+
+          if (ev.liveStatus?.[targetDayIdx]?.[targetTime]) delete ev.liveStatus[targetDayIdx][targetTime];
+          if (ev.meetingResults?.[targetDayIdx]?.[targetTime]) delete ev.meetingResults[targetDayIdx][targetTime];
+          if (ev.onsiteMarks?.[targetDayIdx]?.[targetTime]) delete ev.onsiteMarks[targetDayIdx][targetTime];
+
+          ev.lastModified = Math.max(Date.now(), (ev.lastModified || 0) + 2000);
+          setEventsDB(newEventsDB);
+          setCurrentEvent(ev);
+          saveToBackend(newEventsDB);
+          setResultModal({ isOpen: false, data: {}, isOnsite: false, opponentName: '', onsiteTime: '' });
+          showAlert('현장 방문 스케줄이 정상적으로 삭제되었습니다.');
+        });
+      };
+
+      const deleteMeetingResult = () => {
+        const isWalkin = resultModal.time.includes('현장 매칭');
+        if (isWalkin) {
+          deleteWalkinMeeting(resultModal.time, resultModal.dayIdx);
+        } else {
+          showAlert('본부에서 배정한 정규 스케줄은 삭제할 수 없습니다.\n(현장 매칭만 삭제 가능)');
+        }
+      };
+
+      const deleteRegularMeetingResult = () => {
+        showConfirm('작성된 상담 일지 내용을 삭제(초기화)하시겠습니까?', () => {
+          const { dayIdx, time, cId } = resultModal;
+          const newEventsDB = JSON.parse(JSON.stringify(eventsDB));
+          const ev = newEventsDB[eventId];
+          
+          const dateOnly = ev.config.dates[dayIdx] || getToday();
+          let finalBuyerName = "";
+          let finalCompanyName = "";
+          if (!isComp) {
+              finalBuyerName = targetObj.company;
+              const cObj = ev.companies?.find(c => c.id === cId);
+              finalCompanyName = cObj ? cObj.name : '알 수 없음';
+          } else {
+              const bIdForLog = ev.matches?.[dayIdx]?.[time]?.[cId];
+              const bObj = ev.buyers?.find(b => b.id === bIdForLog);
+              finalBuyerName = bObj ? bObj.company : '알 수 없음';
+              finalCompanyName = targetObj.name;
+          }
+
+          fetch(LOG_GAS_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify({
+                  action: 'delete',
+                  date: dateOnly,
+                  buyerName: finalBuyerName,
+                  companyName: finalCompanyName
+              })
+          }).catch(err => console.error("일지 삭제 에러:", err));
+
+          if (ev.meetingResults?.[dayIdx]?.[time]?.[cId]) {
+            delete ev.meetingResults[dayIdx][time][cId];
+          }
+          
+          if (ev.liveStatus?.[dayIdx]?.[time]?.[cId] === 'submitted') {
+            ev.liveStatus[dayIdx][time][cId] = 'waiting';
+          }
+          
+          ev.lastModified = Math.max(Date.now(), (ev.lastModified || 0) + 2000);
+          setEventsDB(newEventsDB);
+          setCurrentEvent(ev);
+          saveToBackend(newEventsDB);
+          setResultModal({ isOpen: false, data: {}, isOnsite: false, opponentName: '', onsiteTime: '' });
+          showAlert('상담 일지가 성공적으로 삭제되었습니다.');
+        });
+      };
+      const getStatusLabel = (status) => {
+        switch(status) {
+          case 'in_progress': return { text: '진행중', color: 'bg-green-500 text-white' };
+          case 'completed': return { text: '완료', color: 'bg-blue-500 text-white' };
+          case 'submitted': return { text: '제출완료', color: 'bg-teal-500 text-white' };
+          case 'delayed': return { text: '지연', color: 'bg-yellow-500 text-white' };
+          case 'canceled': return { text: '취소', color: 'bg-red-500 text-white' };
+          default: return { text: '대기', color: 'bg-gray-200 text-gray-700' };
+        }
+      };
+
+      const closeManual = () => {
+        setShowManual(false);
+        localStorage.setItem('b2b_manual_seen', 'true');
+      };
+      
+      const toggleCheckbox = (fieldId, option) => {
+        const currentArr = resultModal.data[fieldId] || [];
+        let newArr;
+        if (currentArr.includes(option)) {
+          newArr = currentArr.filter(item => item !== option);
+        } else {
+          newArr = [...currentArr, option];
+        }
+        setResultModal({...resultModal, data: {...resultModal.data, [fieldId]: newArr}});
+      };
+
+      // --- 서브 컴포넌트: 사용 설명서 ---
+      const UserManual = () => (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/70" onClick={closeManual}></div>
+          <div className="relative bg-gray-50 w-full max-w-sm rounded-3xl overflow-hidden flex flex-col max-h-[85vh] shadow-2xl pb-safe">
+            <div className="bg-blue-600 p-5 text-white flex justify-between items-center shrink-0">
+              <h3 className="font-bold text-lg flex items-center"><IconHelp /> <span className="ml-2">사용 가이드</span></h3>
+              <button onClick={closeManual} className="text-3xl leading-none">&times;</button>
+            </div>
+            <div className="p-0 overflow-y-auto flex-1">
+              <section className="p-6 border-b bg-white">
+                <div className="w-full h-40 bg-gray-200 rounded-2xl mb-5 overflow-hidden shadow-inner border border-gray-300 relative flex items-center justify-center select-none pointer-events-none">
+                  <div className="w-3/4 bg-white rounded-xl shadow-lg overflow-hidden flex flex-col">
+                    <div className="bg-blue-600 p-3 text-white text-[10px] font-bold flex justify-between items-center">
+                      <span>🎤 로그인</span>
+                    </div>
+                    <div className="p-3 space-y-2">
+                      <div className="h-6 bg-gray-50 rounded border border-gray-200 flex items-center px-2"><span className="text-[8px] text-gray-400">아이디</span></div>
+                      <div className="h-6 bg-gray-50 rounded border border-gray-200 flex items-center px-2"><span className="text-[8px] text-gray-400">비밀번호</span></div>
+                      <div className="h-6 bg-gray-900 rounded flex items-center justify-center mt-1"><span className="text-[9px] text-white font-bold">로그인</span></div>
+                    </div>
+                  </div>
+                </div>
+                <h4 className="font-bold text-blue-600 mb-2 text-lg">1. 로그인 및 일정 확인</h4>
+                <p className="text-sm text-gray-600 leading-relaxed">관리자에게 부여받은 ID/PW로 로그인하세요. 로그인 즉시 본인에게 배정된 기업(또는 바이어)의 전체 일정이 나타납니다.</p>
+              </section>
+
+              <section className="p-6 border-b bg-white">
+                <div className="w-full h-40 bg-gray-100 rounded-2xl mb-5 overflow-hidden shadow-inner border border-gray-300 relative flex items-center justify-center p-4 select-none pointer-events-none">
+                  <div className="w-full bg-white rounded-xl shadow border border-gray-200 flex flex-col relative overflow-hidden">
+                    <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-green-500"></div>
+                    <div className="p-3 pl-4">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-[10px] font-bold text-blue-600">10:00~11:00</span>
+                        <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-green-500 text-white">진행중</span>
+                      </div>
+                      <div className="mb-2">
+                        <div className="text-[8px] text-gray-500 mb-0.5">상대 바이어</div>
+                        <div className="text-sm font-bold text-gray-900">OO 글로벌 무역</div>
+                      </div>
+                      <div className="flex gap-1 border-t border-gray-100 pt-2 mt-1">
+                        <div className="h-6 bg-gray-100 rounded flex-1 flex items-center justify-center"><span className="text-[9px] font-bold text-gray-700">✔️ 상태 변경</span></div>
+                        <div className="h-6 border border-gray-300 rounded flex-1 flex items-center justify-center"><span className="text-[9px] font-bold text-gray-700">📝 일지 작성</span></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <h4 className="font-bold text-blue-600 mb-2 text-lg">2. 실시간 상태 업데이트</h4>
+                <p className="text-sm text-gray-600 leading-relaxed">상담이 시작되면 <span className="font-bold text-green-600">[진행중]</span>, 종료되면 <span className="font-bold text-blue-600">[완료]</span>로 상태를 꼭 변경해 주세요. 본부에서 현장 상황을 파악하는 데 매우 중요합니다.</p>
+              </section>
+
+              <section className="p-6 border-b bg-white">
+                <div className="w-full h-40 bg-gray-100 rounded-2xl mb-5 overflow-hidden shadow-inner border border-gray-300 relative flex items-end justify-center select-none pointer-events-none">
+                  <div className="w-full mx-4 bg-white rounded-t-2xl shadow-lg border-t border-x border-gray-200 flex flex-col p-4 h-32">
+                    <div className="text-xs font-extrabold mb-3">📝 상담 일지</div>
+                    <div className="text-[9px] font-bold text-gray-700 mb-1.5">매칭 적합도 <span className="text-red-500">*</span></div>
+                    <div className="flex gap-1.5 mb-3">
+                      <div className="h-6 bg-blue-600 rounded flex-1 flex items-center justify-center text-[9px] text-white font-bold">매우 좋음</div>
+                      <div className="h-6 border border-gray-200 rounded flex-1 flex items-center justify-center text-[9px] text-gray-500 font-bold">보통</div>
+                      <div className="h-6 border border-gray-200 rounded flex-1 flex items-center justify-center text-[9px] text-gray-500 font-bold">아쉬움</div>
+                    </div>
+                    <div className="h-6 border border-gray-200 rounded w-full bg-gray-50"></div>
+                  </div>
+                </div>
+                <h4 className="font-bold text-blue-600 mb-2 text-lg">3. 상담 일지 작성</h4>
+                <p className="text-sm text-gray-600 leading-relaxed"><span className="font-bold text-gray-800">[일지 작성]</span> 버튼을 눌러 미팅 내용, 적합도, 상담 금액 등을 기록하세요. 저장 즉시 관리자에게 데이터가 전달됩니다.</p>
+              </section>
+
+              <section className="p-6 bg-white">
+                <div className="w-full h-40 bg-gray-100 rounded-2xl mb-5 overflow-hidden shadow-inner border border-gray-300 relative flex items-start justify-center pt-8 select-none pointer-events-none bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMSIgY3k9IjEiIHI9IjEiIGZpbGw9IiNlNWU3ZWIiLz48L3N2Zz4=')]">
+                  <div className="bg-white/95 backdrop-blur px-4 py-2 rounded-full border border-gray-200 text-xs text-blue-600 font-bold shadow-sm flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+                    데이터 동기화 중...
+                  </div>
+                </div>
+                <h4 className="font-bold text-blue-600 mb-2 text-lg">4. 네트워크 확인</h4>
+                <p className="text-sm text-gray-600 leading-relaxed">상태 변경 시 화면에 '데이터 동기화 중...' 표시가 뜹니다. 완료될 때까지 잠시 기다려 주세요. 오프라인 상태에서는 저장이 되지 않을 수 있습니다.</p>
+              </section>
+            </div>
+            <div className="p-5 bg-white border-t shrink-0 safe-area-pb">
+              <button onClick={closeManual} className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl text-lg shadow-md transition-all active:scale-95">가이드 닫기</button>
+            </div>
+          </div>
+        </div>
+      );
+
+      // --- 조건부 렌더링 영역 ---
+
+      if (!loginUser) {
+        return (
+          <div className="min-h-[100dvh] bg-gray-100 flex flex-col items-center justify-center p-6 pb-safe pt-safe">
+            <div className="w-full max-w-sm bg-white rounded-3xl shadow-xl overflow-hidden">
+              <div className="bg-blue-600 p-8 text-center text-white">
+                <div className="w-16 h-16 bg-white text-blue-600 rounded-2xl flex items-center justify-center text-2xl font-bold mx-auto mb-3 shadow-lg">🎤</div>
+                <h1 className="text-2xl font-bold">로그인</h1>
+                <p className="text-blue-100 text-sm mt-1">현장 스케줄 매니저</p>
+              </div>
+              <div className="p-6 pt-8">
+                <form onSubmit={handleLogin} className="space-y-4">
+                  <div>
+                    <input type="text" placeholder="아이디" value={loginInput.id} onChange={e=>setLoginInput({...loginInput, id: e.target.value})} className="w-full px-4 py-4 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition text-base" />
+                  </div>
+                  <div>
+                    <input type="password" placeholder="비밀번호" value={loginInput.pw} onChange={e=>setLoginInput({...loginInput, pw: e.target.value})} className="w-full px-4 py-4 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition text-base" />
+                  </div>
+                  {loginError && <p className="text-red-500 text-sm font-bold text-center">{loginError}</p>}
+                  <button type="submit" disabled={isSyncing} className="w-full py-4 mt-2 bg-gray-900 text-white font-bold rounded-xl text-lg active:scale-95 disabled:bg-gray-400">
+                    {isSyncing ? '연결 중...' : '로그인'}
+                  </button>
+                </form>
+                
+                <button 
+                  onClick={() => setShowManual(true)}
+                  className="w-full mt-6 flex items-center justify-center text-gray-500 text-sm font-medium hover:text-blue-600 transition"
+                >
+                  <IconHelp /> <span className="ml-1.5 border-b border-gray-300">처음이신가요? 사용 가이드 보기</span>
+                </button>
+              </div>
+            </div>
+            <p className="mt-8 text-gray-400 text-xs">© 2024 Interpreter Schedule Manager</p>
+            {showManual && <UserManual />}
+          </div>
+        );
+      }
+
+      if (!currentEvent) {
+        return (
+          <div className="min-h-[100dvh] bg-gray-100 flex flex-col items-center justify-center p-6 pb-safe pt-safe text-center">
+            <div className="w-20 h-20 bg-gray-200 rounded-full flex items-center justify-center mb-4"><IconUser /></div>
+            <h2 className="text-xl font-bold text-gray-800 mb-2">배정된 행사가 없습니다.</h2>
+            <p className="text-gray-500 mb-8 px-10">본부에서 관리자 또는 계정에 행사를 배정해야 정보가 나타납니다.</p>
+            <button onClick={handleLogout} className="px-8 py-3 bg-white border border-gray-300 rounded-full font-bold shadow-sm">로그아웃</button>
+          </div>
+        );
+      }
+
+      // ==== Admin Dashboard ====
+      if (loginUser.role === 'admin') {
+        const adminFields = customFieldsConfig;
+        
+        const handleSaveAdminFields = (newFields) => {
+          const newEventsDB = JSON.parse(JSON.stringify(eventsDB));
+          if (!newEventsDB[eventId]) newEventsDB[eventId] = JSON.parse(JSON.stringify(currentEvent || {}));
+          if (!newEventsDB[eventId].config) newEventsDB[eventId].config = {};
+          
+          newEventsDB[eventId].config.customFields = newFields;
+          newEventsDB[eventId].lastModified = Math.max(Date.now(), (newEventsDB[eventId].lastModified || 0) + 2000);
+          setEventsDB(newEventsDB);
+          setCurrentEvent(newEventsDB[eventId]);
+          saveToBackend(newEventsDB);
+        };
+
+        const addField = () => {
+          const newFields = [...adminFields, { id: `custom_${Date.now()}`, label: '새 문항', type: 'text', required: false }];
+          handleSaveAdminFields(newFields);
+        };
+
+        const removeField = (idToRemove) => {
+          showConfirm('문항을 삭제하시겠습니까?\n기존 기록이 보이지 않을 수 있습니다.', () => {
+            const newFields = adminFields.filter(f => f.id !== idToRemove);
+            handleSaveAdminFields(newFields);
+          });
+        };
+
+        const updateField = (index, key, value) => {
+          const newFields = [...adminFields];
+          newFields[index][key] = value;
+          handleSaveAdminFields(newFields);
+        };
+
+        const renderAdminTabs = () => (
+          <div className="bg-white border-b flex px-2 overflow-x-auto nav-scrollbar">
+            <button onClick={() => setSelectedDayIdx(0)} className={`flex-1 min-w-[100px] py-3 text-sm font-bold border-b-2 transition-all ${selectedDayIdx === 0 ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400'}`}><IconSettings className="inline mr-1 -mt-0.5" />문항 설정</button>
+            <button onClick={() => setSelectedDayIdx(1)} className={`flex-1 min-w-[100px] py-3 text-sm font-bold border-b-2 transition-all ${selectedDayIdx === 1 ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400'}`}><IconUsers className="inline mr-1 -mt-0.5" />배정 현황</button>
+            <button onClick={() => setSelectedDayIdx(2)} className={`flex-1 min-w-[100px] py-3 text-sm font-bold border-b-2 transition-all ${selectedDayIdx === 2 ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400'}`}><IconDocument className="inline mr-1 -mt-0.5" />상담 일지</button>
+          </div>
+        );
+
+        return (
+          <div className="min-h-[100dvh] bg-gray-100 flex justify-center">
+            <div className="w-full max-w-md bg-white min-h-[100dvh] shadow-2xl relative flex flex-col">
+              <div className="sticky top-0 z-20 shadow-md bg-white">
+                <header className="bg-gray-900 text-white px-5 pt-4 pb-4 safe-area-pt">
+                  <div className="flex justify-between items-center mb-4">
+                    <div className="overflow-hidden flex-1 mr-4">
+                      <h1 className="font-bold text-lg leading-tight">관리자 모드</h1>
+                      {loginUser.assignedEvents && loginUser.assignedEvents.length > 1 ? (
+                        <select
+                          className="mt-1 bg-gray-800 text-blue-300 text-xs font-bold outline-none rounded py-1 px-1.5 w-full border border-gray-700 truncate"
+                          value={eventId}
+                          onChange={(e) => {
+                            setEventId(e.target.value);
+                            setCurrentEvent(eventsDB[e.target.value]);
+                          }}
+                        >
+                          {loginUser.assignedEvents.map(eId => (
+                            <option key={eId} value={eId}>{eventsDB[eId]?.eventName || eId}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p className="text-gray-300 text-xs mt-0.5 font-medium truncate">{currentEvent.eventName}</p>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={handleLogout} className="p-2 bg-white/20 rounded-full hover:bg-white/30"><IconLogout /></button>
+                    </div>
+                  </div>
+                </header>
+                {renderAdminTabs()}
+              </div>
+
+              <div className="p-4 space-y-4 bg-gray-50 flex-1 overflow-y-auto safe-area-pb">
+                {isSyncing && <div className="text-center text-xs text-blue-600 font-bold mb-2 animate-pulse">데이터 동기화 중...</div>}
+                
+                {selectedDayIdx === 0 && (
+                  <div className="space-y-4 pb-10">
+                    <div className="bg-blue-50 text-blue-800 p-4 rounded-xl text-sm mb-4 border border-blue-100">
+                      <strong>상담 일지 양식</strong>을 설정합니다. 추가된 문항은 앱에 실시간 반영됩니다.
+                    </div>
+                    {adminFields.map((field, idx) => (
+                      <div key={field.id} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm relative transition-all">
+                        <div className="flex gap-3 mb-3">
+                          <div className="flex-1">
+                            <label className="text-[10px] text-gray-500 font-bold block mb-1">문항 제목</label>
+                            <input type="text" value={field.label} onChange={(e) => updateField(idx, 'label', e.target.value)} className="w-full border-b border-gray-300 focus:border-blue-500 outline-none py-1 font-bold text-sm" />
+                          </div>
+                          <div className="w-24">
+                            <label className="text-[10px] text-gray-500 font-bold block mb-1">입력 타입</label>
+                            <select value={field.type} onChange={(e) => updateField(idx, 'type', e.target.value)} className="w-full border-b border-gray-300 outline-none py-1 text-sm bg-white font-medium">
+                              <option value="text">짧은 글</option>
+                              <option value="textarea">긴 글</option>
+                              <option value="number">숫자</option>
+                              <option value="select">드롭다운</option>
+                              <option value="radio">단일 선택</option>
+                              <option value="checkbox">다중 선택</option>
+                            </select>
+                          </div>
+                        </div>
+                        {(field.type === 'select' || field.type === 'radio' || field.type === 'checkbox') && (
+                          <div className="mt-1 mb-2 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                            <label className="text-[10px] text-gray-500 font-bold block mb-1">선택지 (쉼표 ','로 구분하여 입력)</label>
+                            <input type="text" value={field.options || ''} onChange={(e) => updateField(idx, 'options', e.target.value)} className="w-full bg-transparent border-b border-gray-300 focus:border-blue-500 outline-none py-1 text-sm font-bold text-gray-700" placeholder="예: 항목1, 항목2, 항목3" />
+                          </div>
+                        )}
+                        <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-100">
+                          <label className="flex items-center gap-2 text-xs text-gray-600 font-bold cursor-pointer select-none">
+                            <input type="checkbox" checked={field.required} onChange={(e) => updateField(idx, 'required', e.target.checked)} className="w-4 h-4 text-blue-600 rounded cursor-pointer" />
+                            필수 입력 항목
+                          </label>
+                          <button onClick={() => removeField(field.id)} className="text-red-500 p-1.5 hover:bg-red-50 rounded-lg transition">
+                            <IconTrash />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    <button onClick={addField} className="w-full py-4 border-2 border-dashed border-gray-300 text-gray-600 font-bold rounded-xl bg-white hover:bg-gray-50 transition flex items-center justify-center">
+                      <IconPlus /> <span className="ml-1">새 문항 추가</span>
+                    </button>
+                  </div>
+                )}
+
+                {selectedDayIdx === 1 && (
+                  <div className="space-y-3 pb-10">
+                    <div className="bg-gray-200 text-gray-700 p-3 rounded-xl text-xs font-bold flex justify-between">
+                      <span>계정</span>
+                      <span>담당 배정 타겟</span>
+                    </div>
+                    {accountsDB.filter(a => a.role === 'interpreter').map(acc => {
+                      const tInfo = acc.assignedTargets?.[eventId];
+                      let tName = '배정되지 않음';
+                      if (tInfo) {
+                        const targetIsComp = tInfo.type === 'company';
+                        const tObj = targetIsComp 
+                          ? currentEvent.companies?.find(c => c.id === tInfo.id) 
+                          : currentEvent.buyers?.find(b => b.id === tInfo.id);
+                        if (tObj) {
+                          tName = targetIsComp ? `${tObj.name} (부스: ${tObj.booth})` : `${tObj.company} (${tObj.name})`;
+                        }
+                      }
+                      return (
+                        <div key={acc.username} className="bg-white p-3.5 rounded-xl border border-gray-200 shadow-sm flex justify-between items-center gap-3">
+                          <span className="font-bold text-sm text-blue-600 truncate flex-shrink-0">{acc.username}</span>
+                          <span className="text-xs text-gray-700 font-bold truncate text-right">{tName}</span>
+                        </div>
+                      );
+                    })}
+                    {accountsDB.filter(a => a.role === 'interpreter').length === 0 && (
+                      <div className="text-center py-10 text-gray-400 text-sm font-bold">등록된 통역사가 없습니다.</div>
+                    )}
+                  </div>
+                )}
+
+               {/* 관리자: 상담 일지 확인 탭 */}
+                {selectedDayIdx === 2 && (
+                  <div className="space-y-4 pb-10">
+                    <div className="flex p-1 bg-gray-200 rounded-lg mb-4">
+                      <button onClick={() => setAdminLogTab('regular')} className={`flex-1 py-2 text-sm font-bold rounded-md transition ${adminLogTab === 'regular' ? 'bg-white text-blue-600 shadow' : 'text-gray-500'}`}>사전 상담 일지</button>
+                      <button onClick={() => setAdminLogTab('onsite')} className={`flex-1 py-2 text-sm font-bold rounded-md transition ${adminLogTab === 'onsite' ? 'bg-white text-orange-600 shadow' : 'text-gray-500'}`}>현장 상담 일지</button>
+                    </div>
+                    <div className="bg-blue-50 text-blue-800 p-4 rounded-xl text-sm mb-4 border border-blue-100 font-medium">
+                      작성하여 제출한 {adminLogTab === 'regular' ? '사전' : '현장'} 상담 일지를 확인합니다.
+                    </div>
+                    
+                    {(!currentEvent.meetingResults || Object.keys(currentEvent.meetingResults).length === 0) ? (
+                      <div className="text-center py-10 text-gray-400 text-sm font-bold">제출된 상담 일지가 없습니다.</div>
+                    ) : (
+                      Object.keys(currentEvent.meetingResults).sort().map(dayIdxStr => {
+                        const dayIdx = parseInt(dayIdxStr);
+                        const dayData = currentEvent.meetingResults[dayIdx];
+                        return Object.keys(dayData).sort().map(time => {
+                          const isWalkin = time.includes('현장');
+                          if (adminLogTab === 'regular' && isWalkin) return null;
+                          if (adminLogTab === 'onsite' && !isWalkin) return null;
+
+                          return Object.keys(dayData[time]).map(cId => {
+                            const data = dayData[time][cId];
+                            
+                            // 이름 매칭 로직 (기업 또는 바이어 또는 워크인)
+                            let targetName = cId;
+                            const comp = currentEvent.companies?.find(c => c.id === cId);
+                            const buyer = currentEvent.buyers?.find(b => b.id === cId);
+                            if (comp) targetName = comp.name;
+                            else if (buyer) targetName = `${buyer.company} (${buyer.name})`;
+
+                            return (
+                              <div key={`${dayIdx}-${time}-${cId}`} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-2">
+                                <div className="flex justify-between items-center border-b border-gray-100 pb-2">
+                                  <span className="text-xs text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded">{dayIdx + 1}일차 | {time}</span>
+                                  <span className="text-xs text-gray-500 font-semibold">{targetName}</span>
+                                </div>
+                                <div className="space-y-2 mt-1">
+                                  {Object.entries(data).map(([k, v]) => {
+                                    const fieldLabel = customFieldsConfig.find(f => f.id === k)?.label || k;
+                                    return (
+                                      <div key={k} className="bg-gray-50 p-2.5 rounded-lg">
+                                        <div className="text-[10px] font-bold text-gray-500 mb-0.5">{fieldLabel}</div>
+                                        <div className="text-sm text-gray-800 font-medium whitespace-pre-wrap">{Array.isArray(v) ? v.join(', ') : v}</div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          });
+                        });
+                      })
+                    )}
+                  </div>
+                )}
+
+              </div>
+            </div>
+          </div>
+        );
+      }
+      // ==== Admin Dashboard End ====
+
+      if (!targetInfo) {
+        return (
+          <div className="min-h-[100dvh] bg-gray-100 p-8 text-center flex flex-col items-center justify-center pb-safe pt-safe">
+            <p className="mb-4">행사 정보는 있으나 배정된 타겟이 없습니다.</p>
+            <button onClick={handleLogout} className="text-blue-600 font-bold">로그아웃</button>
+          </div>
+        );
+      }
+
+      const dayMatchesLocal = currentEvent.matches?.[selectedDayIdx] || {};
+      const regularSlots = getBaseTimeSlots;
+      const walkinSlots = Object.keys(dayMatchesLocal).filter(k => {
+          if (!k.includes('현장')) return false;
+          if (isComp) return Object.keys(dayMatchesLocal[k]).includes(targetObj?.id);
+          else return Object.values(dayMatchesLocal[k]).includes(targetObj?.id);
+      }).sort();
+      
+      const displaySlots = scheduleTab === 'regular' ? regularSlots : walkinSlots;
+
+      return (
+        <div className="min-h-[100dvh] bg-gray-100 flex justify-center">
+          <div className="w-full max-w-md bg-white min-h-[100dvh] shadow-2xl relative flex flex-col">
+            
+            {/* 상단 고정 영역 (iPhone 노치 대응) */}
+            <div className="sticky top-0 z-20 shadow-md bg-white">
+              <header className="bg-blue-600 text-white px-5 pt-4 pb-4 safe-area-pt">
+                <div className="flex justify-between items-center mb-4">
+                  <div className="overflow-hidden flex-1 mr-4">
+                    {loginUser.assignedEvents && loginUser.assignedEvents.length > 1 ? (
+                      <select
+                        className="bg-blue-700 text-white text-lg font-bold outline-none rounded py-0.5 w-full truncate -ml-1 border border-blue-500"
+                        value={eventId}
+                        onChange={(e) => {
+                          setEventId(e.target.value);
+                          setCurrentEvent(eventsDB[e.target.value]);
+                        }}
+                      >
+                        {loginUser.assignedEvents.map(eId => (
+                          <option key={eId} value={eId}>{eventsDB[eId]?.eventName || eId}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <h1 className="font-bold text-lg leading-tight truncate w-full">{currentEvent.eventName}</h1>
+                    )}
+                    <p className="text-blue-200 text-xs mt-0.5 font-medium flex items-center">
+                      <span className="opacity-70 mr-1">통역사:</span> {loginUser.id}
+                    </p>
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <button onClick={() => setShowManual(true)} className="p-2 bg-white/20 rounded-full hover:bg-white/30"><IconHelp /></button>
+                    <button onClick={handleLogout} className="p-2 bg-white/20 rounded-full hover:bg-white/30"><IconLogout /></button>
+                  </div>
+                </div>
+                
+                {/* 내 담당 정보 카드 */}
+                <div className="bg-white text-gray-900 p-3.5 rounded-xl shadow-inner flex items-center justify-between border border-blue-500/20">
+                  <div>
+                    <div className="text-[10px] font-bold text-blue-600 mb-0.5">내 담당 {isComp ? '기업' : '바이어'}</div>
+                    <div className="font-extrabold text-base truncate w-48">{isComp ? targetObj?.name : `${targetObj?.company} (${targetObj?.name})`}</div>
+                  </div>
+                  {isComp && <div className="text-xs font-bold bg-blue-50 text-blue-700 px-2.5 py-1.5 rounded-lg border border-blue-100">부스: {targetObj?.booth}</div>}
+                </div>
+
+                {/* 남은 시간 카운트다운 카드 */}
+                {nextMeetingInfo ? (
+                    <div className="mt-3 bg-blue-800/50 rounded-xl p-3 border border-blue-400/30 shadow-inner">
+                        <div className="flex justify-between items-center mb-1.5">
+                            <span className="text-[10px] text-blue-200 font-bold flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span> 다음 미팅까지 남은 시간
+                            </span>
+                            <span className="text-[10px] bg-blue-500/50 text-white px-2 py-0.5 rounded font-bold">{nextMeetingInfo.timeLabel} 시작</span>
+                        </div>
+                        <div className="flex justify-between items-end">
+                            <div className="text-2xl font-black text-white tracking-tight">
+                                {nextMeetingInfo.days > 0 && <span>{nextMeetingInfo.days}일 </span>}
+                                {nextMeetingInfo.hours > 0 && <span>{nextMeetingInfo.hours}시간 </span>}
+                                {nextMeetingInfo.mins > 0 ? <span>{nextMeetingInfo.mins}분</span> : <span>잠시 후 시작</span>}
+                            </div>
+                            <div className="text-xs text-blue-100 font-medium truncate max-w-[140px] text-right">
+                                상대: {nextMeetingInfo.oppName}
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="mt-3 bg-blue-800/50 rounded-xl p-3 border border-blue-400/30 flex items-center justify-center">
+                        <span className="text-xs text-blue-200 font-bold">예정된 다음 미팅이 없습니다.</span>
+                    </div>
+                )}
+              </header>
+
+              {/* 날짜 탭 */}
+              <div className="bg-white border-b flex px-2 overflow-x-auto nav-scrollbar">
+                {(currentEvent.config?.dates || []).map((date, idx) => (
+                  <button 
+                    key={idx} onClick={() => setSelectedDayIdx(idx)}
+                    className={`flex-1 py-3 text-sm font-bold border-b-2 whitespace-nowrap px-4 transition-all ${selectedDayIdx === idx ? 'border-blue-600 text-blue-600 bg-blue-50/30' : 'border-transparent text-gray-400'}`}
+                  >
+                    {idx + 1}일 차 ({date.split('-').slice(1).join('/')})
+                  </button>
+                ))}
+              </div>
+              
+              {/* 스케줄 구분 탭 추가 */}
+              <div className="bg-gray-100 flex p-2 border-b">
+                <button onClick={() => setScheduleTab('regular')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${scheduleTab === 'regular' ? 'bg-white text-blue-700 shadow-sm border border-blue-200' : 'text-gray-500'}`}>사전 매칭 스케줄</button>
+                <button onClick={() => setScheduleTab('onsite')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ml-2 ${scheduleTab === 'onsite' ? 'bg-white text-orange-700 shadow-sm border border-orange-200' : 'text-gray-500'}`}>현장 방문 스케줄</button>
+              </div>
+            </div>
+
+            {/* 스케줄 목록 */}
+            <div className="p-4 space-y-3 bg-gray-50 flex-1 overflow-y-auto safe-area-pb">
+              {isSyncing && (
+                <div className="flex justify-center mb-2">
+                  <div className="bg-white/80 backdrop-blur px-3 py-1 rounded-full border border-gray-200 text-[10px] text-blue-600 font-bold animate-pulse shadow-sm">데이터 동기화 중...</div>
+                </div>
+              )}
+              
+              {displaySlots.length === 0 && (
+                 <div className="text-center py-10 text-gray-400 font-bold">배정된 일정이 없습니다.</div>
+              )}
+              
+              {displaySlots.map((time) => {
+                const dayMatches = currentEvent.matches?.[selectedDayIdx] || {};
+                const timeMatch = dayMatches[time] || {};
+                const liveStatus = currentEvent.liveStatus?.[selectedDayIdx]?.[time] || {};
+                
+                let cId = isComp ? targetObj?.id : Object.keys(timeMatch).find(k => timeMatch[k] === targetObj?.id);
+                let bId = timeMatch[cId];
+                
+                // 해당 스케줄이 현장 방문 매칭인지 체크
+                const isWalkinSlot = time.includes('현장 매칭');
+                
+                if (!bId || !cId) {
+                  return (
+                    <div key={time} className="flex items-center border border-gray-200 bg-white rounded-xl p-3 opacity-60">
+                      <div className="w-16 font-bold text-gray-400 text-[10px] flex items-center border-r pr-2 shrink-0"><IconClock/><span className="ml-1">{time.split('~')[0]}</span></div>
+                      <div className="pl-4 text-xs text-gray-400">배정된 일정 없음</div>
+                    </div>
+                  );
+                }
+
+                const oppCompany = isComp ? currentEvent.buyers?.find(b=>b.id===bId) : currentEvent.companies?.find(c=>c.id===cId);
+                const currentStat = liveStatus[cId] || 'waiting';
+                const statLabel = getStatusLabel(currentStat);
+                
+                const resultData = currentEvent.meetingResults?.[selectedDayIdx]?.[time]?.[cId];
+                const hasResult = resultData && Object.keys(resultData).length > 0;
+
+                return (
+                  <div key={time} className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden flex flex-col relative transition-all active:scale-[0.98]">
+                    <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${statLabel.color.split(' ')[0]}`}></div>
+                    
+                    <div className="p-4 pl-5">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-xs font-bold text-blue-600 tracking-tight">{time}</span>
+                        <div className="flex items-center gap-1.5">
+                          {/* ✅ 현장 방문 항목일 경우 쓰레기통 아이콘 노출 */}
+                          {isWalkinSlot && (
+                            <button 
+                              onClick={() => deleteWalkinMeeting(time, selectedDayIdx)} 
+                              className="text-red-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition-colors"
+                              title="현장 방문 완전히 삭제"
+                            >
+                              <IconTrash />
+                            </button>
+                          )}
+                          <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${statLabel.color}`}>{statLabel.text}</span>
+                        </div>
+                      </div>
+                      
+                      <div className="mb-4">
+                        <div className="text-[10px] text-gray-500 mb-0.5 font-medium">상대 {isComp ? '바이어' : '기업'}</div>
+                        <div className="text-lg font-bold text-gray-900 leading-tight">
+                          {isComp ? `${oppCompany?.company} (${oppCompany?.name})` : oppCompany?.name}
+                        </div>
+                        {!isComp && <div className="text-xs text-blue-600 mt-1.5 font-bold bg-blue-50 inline-block px-1.5 py-0.5 rounded">부스: {oppCompany?.booth}</div>}
+                      </div>
+
+                      <div className="flex gap-2 border-t pt-3">
+                        <button 
+                          onClick={() => setStatusModal({ isOpen: true, dayIdx: selectedDayIdx, time, cId, currentStatus: currentStat })}
+                          className="flex-1 bg-gray-100 active:bg-gray-200 text-gray-800 py-3 rounded-xl text-sm font-bold transition flex items-center justify-center"
+                        >
+                          <IconCheck /> <span className="ml-1">상태 변경</span>
+                        </button>
+                        <button 
+                          onClick={() => {
+                            const data = resultData || {};
+                            setResultModal({ isOpen: true, dayIdx: selectedDayIdx, time, cId, data, isOnsite: false, opponentName: '', onsiteTime: '' });
+                          }}
+                          className={`flex-1 py-3 rounded-xl text-sm font-bold transition flex items-center justify-center border ${hasResult ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-300 text-gray-700 active:bg-gray-50'}`}
+                        >
+                          <IconEdit /> <span className="ml-1">{hasResult ? '일지 수정' : '일지 작성'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              
+              {/* 현장 매칭 추가 버튼 */}
+              {scheduleTab === 'onsite' && (
+                <button 
+                  onClick={() => setResultModal({ isOpen: true, dayIdx: selectedDayIdx, time: '', cId: '', data: {}, isOnsite: true, opponentName: '', onsiteTime: '' })}
+                  className="w-full mt-5 py-4 border-2 border-dashed border-orange-400 text-orange-600 font-bold rounded-2xl bg-orange-50/50 hover:bg-orange-100 transition flex items-center justify-center active:scale-[0.98] mb-6"
+                >
+                  <span className="text-2xl leading-none mr-2">+</span> 현장 방문(워크인) 일지 추가
+                </button>
+              )}
+
+            </div>
+
+            {/* 상태 변경 모달 */}
+            {statusModal.isOpen && (
+              <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+                <div className="absolute inset-0 bg-black/60" onClick={() => setStatusModal({isOpen:false})}></div>
+                <div className="w-full max-w-md bg-white rounded-t-[2.5rem] sm:rounded-3xl z-10 bottom-sheet overflow-hidden flex flex-col safe-area-pb">
+                  <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mt-4 mb-2 sm:hidden"></div>
+                  <div className="p-6">
+                    <h3 className="text-lg font-bold text-center mb-8">진행 상태 변경</h3>
+                    <div className="grid grid-cols-2 gap-3 mb-8">
+                      {[
+                        {val: 'waiting', label: '대기중', c: 'bg-gray-100 text-gray-800 border-gray-200'},
+                        {val: 'in_progress', label: '진행중', c: 'bg-green-100 text-green-800 border-green-300'},
+                        {val: 'completed', label: '완료됨', c: 'bg-blue-100 text-blue-800 border-blue-300'},
+                        {val: 'submitted', label: '제출완료', c: 'bg-teal-100 text-teal-800 border-teal-300'},
+                        {val: 'delayed', label: '연기됨', c: 'bg-yellow-100 text-yellow-800 border-yellow-300'},
+                        {val: 'canceled', label: '취소됨', c: 'bg-red-100 text-red-800 border-red-300'},
+                      ].map(s => (
+                        <button 
+                          key={s.val} onClick={() => handleStatusChange(s.val)}
+                          className={`py-4 rounded-2xl border-2 font-bold text-base transition-all ${statusModal.currentStatus === s.val ? s.c + ' ring-2 ring-offset-2 ring-blue-500 shadow-md scale-[0.98]' : 'bg-white border-gray-200 text-gray-600'}`}
+                        >
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={() => setStatusModal({isOpen:false})} className="w-full py-4 bg-gray-900 text-white font-bold rounded-2xl text-lg shadow-lg">닫기</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 일지 작성 모달 */}
+            {resultModal.isOpen && (
+              <div className="fixed inset-0 z-50 flex items-end justify-center">
+                <div className="absolute inset-0 bg-white z-10 flex flex-col h-full w-full max-w-md mx-auto bottom-sheet">
+                  <div className="flex items-center justify-between p-4 border-b bg-gray-50 shrink-0 safe-area-pt">
+                    <h3 className="text-lg font-extrabold ml-2">📝 {resultModal.isOnsite ? '현장 상담 추가' : '상담 일지'}</h3>
+                    <button onClick={() => setResultModal({isOpen:false})} className="p-2 text-gray-500 font-bold text-xl mr-1">닫기</button>
+                  </div>
+                  <div className="p-6 overflow-y-auto flex-1 space-y-7 bg-white">
+                    
+                    {/* 현장 매칭인 경우 상담 날짜, 시간 선택 및 상대방 정보 입력 필드 표시 */}
+                    {resultModal.isOnsite && (
+                      <div className="space-y-5">
+                        {/* 1. 날짜 선택 */}
+                        <div>
+                          <label className="block text-sm font-extrabold text-blue-600 mb-3">상담 날짜 <span className="text-red-500">*</span></label>
+                          <div className="relative">
+                            <select
+                              value={resultModal.dayIdx}
+                              onChange={e => setResultModal({...resultModal, dayIdx: parseInt(e.target.value)})}
+                              className="w-full p-4 border-2 border-blue-200 rounded-2xl outline-none focus:ring-2 focus:border-blue-500 font-bold bg-blue-50/30 text-gray-800 text-base appearance-none"
+                            >
+                              {(currentEvent.config?.dates || []).map((dateStr, idx) => (
+                                <option key={idx} value={idx}>{idx + 1}일 차 ({dateStr.split('-').slice(1).join('/')})</option>
+                              ))}
+                            </select>
+                            <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none text-blue-400">
+                              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 2. 세션 선택 */}
+                        <div>
+                          <label className="block text-sm font-extrabold text-blue-600 mb-3">상담 진행 시간 (세션) <span className="text-red-500">*</span></label>
+                          <div className="relative">
+                            <select 
+                              value={resultModal.onsiteTime || ''}
+                              onChange={e => setResultModal({...resultModal, onsiteTime: e.target.value})}
+                              className="w-full p-4 border-2 border-blue-200 rounded-2xl outline-none focus:ring-2 focus:border-blue-500 font-bold bg-blue-50/30 text-gray-800 text-base appearance-none"
+                            >
+                              <option value="" disabled>시간을 선택해 주세요</option>
+                              {getBaseTimeSlots.map(t => (
+                                <option key={t} value={t}>{t}</option>
+                              ))}
+                            </select>
+                            <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none text-blue-400">
+                              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 3. 상대방 이름 입력 */}
+                        <div>
+                          <label className="block text-sm font-extrabold text-blue-600 mb-3">상대방 소속 및 이름 (현장 방문) <span className="text-red-500">*</span></label>
+                          <input 
+                            type="text" 
+                            value={resultModal.opponentName || ''} 
+                            onChange={e => setResultModal({...resultModal, opponentName: e.target.value})}
+                            className="w-full p-4 border-2 border-blue-200 rounded-2xl outline-none focus:ring-2 focus:border-blue-500 font-bold bg-blue-50/30 text-gray-800 placeholder-blue-300 text-base" 
+                            placeholder={isComp ? "예: OO무역 (홍길동)" : "예: 참가기업 OO전자"} 
+                          />
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* 동적 문항 렌더링 */}
+                    {customFieldsConfig.map(field => (
+                      <div key={field.id} className="mt-2">
+                        <label className="block text-sm font-extrabold text-gray-700 mb-3">{field.label} {field.required && <span className="text-red-500">*</span>}</label>
+                        
+                        {field.type === 'textarea' ? (
+                          <textarea 
+                            value={resultModal.data[field.id] || ''} 
+                            onChange={e => setResultModal({...resultModal, data: {...resultModal.data, [field.id]: e.target.value}})}
+                            className="w-full p-4 border border-gray-300 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 h-32 text-base resize-none leading-relaxed" 
+                            placeholder={`${field.label}을(를) 입력해 주세요.`}
+                          ></textarea>
+                          
+                        ) : field.type === 'number' ? (
+                          <div className="relative">
+                            <input 
+                              type="number" 
+                              value={resultModal.data[field.id] || ''} 
+                              onChange={e=>setResultModal({...resultModal, data: {...resultModal.data, [field.id]: e.target.value}})} 
+                              className="w-full p-4 pl-4 border border-gray-300 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-base" 
+                              placeholder="0" 
+                            />
+                          </div>
+                          
+                        ) : field.type === 'select' ? (
+                          <div className="relative">
+                            <select 
+                              value={resultModal.data[field.id] || ''} 
+                              onChange={e=>setResultModal({...resultModal, data: {...resultModal.data, [field.id]: e.target.value}})} 
+                              className="w-full p-4 border border-gray-300 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-base appearance-none bg-white"
+                            >
+                              <option value="" disabled>선택해 주세요</option>
+                              {(field.options || '').split(',').map(s => s.trim()).filter(Boolean).map((opt, i) => (
+                                <option key={i} value={opt}>{opt}</option>
+                              ))}
+                            </select>
+                            <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none text-gray-400">
+                              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </div>
+                          </div>
+                          
+                        ) : field.type === 'radio' ? (
+                          <div className="flex flex-wrap gap-2">
+                            {(field.options || '').split(',').map(s => s.trim()).filter(Boolean).map(opt => {
+                              const isSelected = resultModal.data[field.id] === opt;
+                              return (
+                                <button
+                                  key={opt} type="button"
+                                  onClick={() => setResultModal({...resultModal, data: {...resultModal.data, [field.id]: opt}})}
+                                  className={`flex-1 py-3 px-2 min-w-[70px] text-xs font-bold border rounded-xl transition-all ${isSelected ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-gray-600 border-gray-300'}`}
+                                >
+                                  {opt}
+                                </button>
+                              )
+                            })}
+                          </div>
+                          
+                        ) : field.type === 'checkbox' ? (
+                          <div className="flex flex-wrap gap-2">
+                            {(field.options || '').split(',').map(s => s.trim()).filter(Boolean).map(opt => {
+                              const isSelected = (resultModal.data[field.id] || []).includes(opt);
+                              return (
+                                <button
+                                  key={opt} type="button"
+                                  onClick={() => toggleCheckbox(field.id, opt)}
+                                  className={`py-3 px-3 text-xs font-bold border rounded-xl transition-all ${isSelected ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-gray-600 border-gray-300'}`}
+                                >
+                                  {opt}
+                                </button>
+                              )
+                            })}
+                          </div>
+                          
+                        ) : (
+                          <input 
+                            type="text" 
+                            value={resultModal.data[field.id] || ''} 
+                            onChange={e=>setResultModal({...resultModal, data: {...resultModal.data, [field.id]: e.target.value}})} 
+                            className="w-full p-4 border border-gray-300 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-base" 
+                            placeholder={`${field.label}을(를) 입력해 주세요.`} 
+                          />
+                        )}
+                      </div>
+                    ))}
+                    
+                  </div>
+                  <div className="p-4 border-t bg-gray-50 flex gap-3 shrink-0 safe-area-pb">
+                    {/* ✅ 현장 매칭인 경우: 스케줄 완전 삭제 버튼 */}
+                    {resultModal.time.includes('현장 매칭') ? (
+                      <button 
+                        onClick={deleteMeetingResult} 
+                        className="px-5 py-4 bg-red-50 text-red-600 font-bold rounded-2xl text-base active:scale-95 transition-all whitespace-nowrap"
+                      >
+                        현장 매칭 삭제
+                      </button>
+                    ) : (
+                      /* ✅ 정규 스케줄인 경우: 작성된 일지만 삭제하는 버튼 */
+                      (resultModal.data && Object.keys(resultModal.data).length > 0) && (
+                        <button 
+                          onClick={deleteRegularMeetingResult} 
+                          className="px-5 py-4 bg-red-50 text-red-600 font-bold rounded-2xl text-base active:scale-95 transition-all whitespace-nowrap"
+                        >
+                          일지 삭제
+                        </button>
+                      )
+                    )}
+                    <button onClick={saveMeetingResult} className="flex-1 py-4 bg-blue-600 text-white font-black rounded-2xl text-lg active:scale-95 shadow-xl transition-all">
+                      일지 저장하기
+                    </button>
+                  </div>       
+                </div>
+              </div>
+            )}
+            
+            {/* 공통 알림/확인 모달 (alert/confirm 대체) */}
+            {dialog.isOpen && (
+              <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+                <div className="absolute inset-0 bg-black/60" onClick={() => dialog.type === 'alert' && setDialog({ ...dialog, isOpen: false })}></div>
+                <div className="relative bg-white rounded-3xl p-6 w-full max-w-xs shadow-2xl z-10 animate-[slideUp_0.2s_ease-out]">
+                  <h3 className="text-lg font-bold mb-3 text-gray-800 text-center">{dialog.type === 'alert' ? '알림' : '확인'}</h3>
+                  <p className="text-sm text-gray-600 mb-6 text-center whitespace-pre-line">{dialog.message}</p>
+                  <div className="flex gap-3">
+                    {dialog.type === 'confirm' && (
+                      <button onClick={() => setDialog({ ...dialog, isOpen: false })} className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition">취소</button>
+                    )}
+                    <button
+                      onClick={() => {
+                        if (dialog.type === 'confirm' && dialog.onConfirm) dialog.onConfirm();
+                        setDialog({ ...dialog, isOpen: false });
+                      }}
+                      className={`flex-1 py-3 font-bold rounded-xl text-white transition ${dialog.type === 'confirm' ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-600 hover:bg-blue-700'}`}
+                    >
+                      확인
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {showManual && <UserManual />}
+
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
