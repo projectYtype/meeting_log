@@ -113,7 +113,7 @@
       const showAlert = (message) => setDialog({ isOpen: true, type: 'alert', message, onConfirm: null });
       const showConfirm = (message, onConfirm) => setDialog({ isOpen: true, type: 'confirm', message, onConfirm });
 
-      // 현재 시간 (카운트다운 용도)
+      // 현재 시간 (타임라인 색상 강조 등)
       const [now, setNow] = useState(new Date());
 
       // 이미지 기반 기본 커스텀 문항 세팅 (줄바꿈 오류 해결)
@@ -204,7 +204,7 @@
         
       }, [loginUser?.id]);
 
-      // --- 파생 변수 및 남은 시간 계산 ---
+      // --- 파생 변수 계산 ---
       const targetInfo = loginUser?.assignedTargets?.[eventId];
       const isComp = targetInfo?.type === 'company';
       const targetObj = currentEvent && targetInfo ? (isComp 
@@ -227,77 +227,6 @@
         }
         return slots;
       }, [currentEvent]);
-
-      const nextMeetingInfo = useMemo(() => {
-          if (!currentEvent || !targetObj) return null;
-          const allMyMeetings = [];
-
-          (currentEvent.config?.dates || []).forEach((dateStr, dayIdx) => {
-              const parts = dateStr.split('-');
-              if(parts.length !== 3) return;
-              const year = parseInt(parts[0]);
-              const month = parseInt(parts[1]) - 1; 
-              const day = parseInt(parts[2]);
-
-              const dayMatches = currentEvent.matches?.[dayIdx] || {};
-              const extraSlots = Object.keys(dayMatches).filter(k => {
-                if (getBaseTimeSlots.includes(k)) return false;
-                if (isComp) return Object.keys(dayMatches[k]).includes(targetObj.id);
-                else return Object.values(dayMatches[k]).includes(targetObj.id);
-              });
-              const allSlots = [...getBaseTimeSlots, ...extraSlots];
-
-              allSlots.forEach(time => {
-                  const timeMatch = dayMatches[time] || {};
-                  let cId = isComp ? targetObj.id : Object.keys(timeMatch).find(k => timeMatch[k] === targetObj.id);
-                  let bId = timeMatch[cId];
-                  if (!bId || !cId) return;
-
-                  let startH, startM;
-                  const startStr = time.split('~')[0];
-                  if (startStr.includes('현장 매칭')) {
-                       const match = startStr.match(/\((\d{2}):(\d{2})\)/) || startStr.match(/\((\d{2}:\d{2})/);
-                       if(match) { 
-                         const tSplit = match[1].split(':');
-                         startH = parseInt(tSplit[0]); startM = parseInt(tSplit[1]) || parseInt(match[2]); 
-                       }
-                       else return;
-                  } else {
-                       const timeParts = startStr.split(':');
-                       if(timeParts.length !== 2) return;
-                       startH = parseInt(timeParts[0]); startM = parseInt(timeParts[1]);
-                  }
-                  
-                  const meetingStart = new Date(year, month, day, startH, startM, 0);
-                  allMyMeetings.push({ dayIdx, time, meetingStart, bId, cId, startStr });
-              });
-          });
-
-          allMyMeetings.sort((a, b) => a.meetingStart - b.meetingStart);
-
-          for (let meeting of allMyMeetings) {
-              if (meeting.meetingStart > now) {
-                  const diffMs = meeting.meetingStart - now;
-                  const diffMins = Math.floor(diffMs / 60000);
-                  const days = Math.floor(diffMins / (60 * 24));
-                  const hours = Math.floor((diffMins % (60 * 24)) / 60);
-                  const mins = diffMins % 60;
-
-                  const oppCompany = isComp ? currentEvent.buyers?.find(b=>b.id===meeting.bId) : currentEvent.companies?.find(c=>c.id===meeting.cId);
-
-                  return {
-                      timeLabel: meeting.startStr,
-                      days: days,
-                      hours: hours,
-                      mins: mins,
-                      oppName: oppCompany ? (isComp ? `${oppCompany.company} (${oppCompany.name})` : oppCompany.name) : '알 수 없음',
-                      dayIdx: meeting.dayIdx
-                  };
-              }
-          }
-          return null;
-      }, [currentEvent, targetObj, isComp, now, getBaseTimeSlots]);
-
 
       // --- 함수 정의 ---
       const saveToBackend = async (newEventsDB) => {
@@ -1089,6 +1018,38 @@
       
       const displaySlots = scheduleTab === 'regular' ? regularSlots : walkinSlots;
 
+      // 🕒 현재 시간 및 다음 미팅 시간 계산 (색상 강조용)
+      let currentActiveTime = null;
+      let nextActiveTime = null;
+
+      if (currentEvent && currentEvent.config?.dates?.[selectedDayIdx]) {
+        const parts = currentEvent.config.dates[selectedDayIdx].split('-');
+        if (parts.length === 3) {
+          const year = parseInt(parts[0]);
+          const month = parseInt(parts[1]) - 1;
+          const day = parseInt(parts[2]);
+
+          for (let time of displaySlots) {
+            const match = time.match(/(\d{2}):(\d{2})~(\d{2}):(\d{2})/);
+            if (match) {
+              const startH = parseInt(match[1]);
+              const startM = parseInt(match[2]);
+              const endH = parseInt(match[3]);
+              const endM = parseInt(match[4]);
+
+              const slotStart = new Date(year, month, day, startH, startM, 0);
+              const slotEnd = new Date(year, month, day, endH, endM, 0);
+
+              if (now >= slotStart && now < slotEnd) {
+                currentActiveTime = time;
+              } else if (now < slotStart && !nextActiveTime) {
+                nextActiveTime = time;
+              }
+            }
+          }
+        }
+      }
+
       return (
         <div className="min-h-[100dvh] bg-gray-100 flex justify-center">
           <div className="w-full max-w-md bg-white min-h-[100dvh] shadow-2xl relative flex flex-col">
@@ -1132,32 +1093,6 @@
                   </div>
                   {isComp && <div className="text-xs font-bold bg-blue-50 text-blue-700 px-2.5 py-1.5 rounded-lg border border-blue-100">부스: {targetObj?.booth}</div>}
                 </div>
-
-                {/* 남은 시간 카운트다운 카드 */}
-                {nextMeetingInfo ? (
-                    <div className="mt-3 bg-blue-800/50 rounded-xl p-3 border border-blue-400/30 shadow-inner">
-                        <div className="flex justify-between items-center mb-1.5">
-                            <span className="text-[10px] text-blue-200 font-bold flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span> 다음 미팅까지 남은 시간
-                            </span>
-                            <span className="text-[10px] bg-blue-500/50 text-white px-2 py-0.5 rounded font-bold">{nextMeetingInfo.timeLabel} 시작</span>
-                        </div>
-                        <div className="flex justify-between items-end">
-                            <div className="text-2xl font-black text-white tracking-tight">
-                                {nextMeetingInfo.days > 0 && <span>{nextMeetingInfo.days}일 </span>}
-                                {nextMeetingInfo.hours > 0 && <span>{nextMeetingInfo.hours}시간 </span>}
-                                {nextMeetingInfo.mins > 0 ? <span>{nextMeetingInfo.mins}분</span> : <span>잠시 후 시작</span>}
-                            </div>
-                            <div className="text-xs text-blue-100 font-medium truncate max-w-[140px] text-right">
-                                상대: {nextMeetingInfo.oppName}
-                            </div>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="mt-3 bg-blue-800/50 rounded-xl p-3 border border-blue-400/30 flex items-center justify-center">
-                        <span className="text-xs text-blue-200 font-bold">예정된 다음 미팅이 없습니다.</span>
-                    </div>
-                )}
               </header>
 
               {/* 날짜 탭 */}
@@ -1218,8 +1153,18 @@
                 const resultData = currentEvent.meetingResults?.[selectedDayIdx]?.[time]?.[cId];
                 const hasResult = resultData && Object.keys(resultData).length > 0;
 
+                // 🎨 상태 및 시간에 따른 배경색 결정
+                let cardBgClass = "bg-white border-gray-200";
+                if (currentStat === 'submitted') {
+                  cardBgClass = "bg-gray-100 border-gray-300 opacity-90"; // 제출완료 시 연회색
+                } else if (time === currentActiveTime) {
+                  cardBgClass = "bg-green-50 border-green-300"; // 현재 미팅 연초록색
+                } else if (time === nextActiveTime) {
+                  cardBgClass = "bg-yellow-50 border-yellow-300"; // 다음 미팅 연노란색
+                }
+
                 return (
-                  <div key={time} className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden flex flex-col relative transition-all active:scale-[0.98]">
+                  <div key={time} className={`${cardBgClass} border rounded-2xl shadow-sm overflow-hidden flex flex-col relative transition-all active:scale-[0.98]`}>
                     <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${statLabel.color.split(' ')[0]}`}></div>
                     
                     <div className="p-4 pl-5">
