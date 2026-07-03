@@ -1130,7 +1130,7 @@ if (recommData && targetObj) {
     
     {/* 👇 변경된 부분: 기업일 땐 부스, 바이어일 땐 미팅 테이블 표시 */}
     <div className="text-xs font-bold bg-blue-50 text-blue-700 px-2.5 py-1.5 rounded-lg border border-blue-100">
-      {isComp ? '부스' : '미팅 테이블'}: {targetObj?.booth}
+      {isComp ? '부스' : '미팅 테이블'}: {targetObj?.booth || targetObj?.table}
     </div>
     
   </div>
