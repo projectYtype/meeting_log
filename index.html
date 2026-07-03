@@ -1128,9 +1128,9 @@ if (recommData && targetObj) {
       <div className="font-extrabold text-base truncate w-48">{isComp ? targetObj?.name : `${targetObj?.company} (${targetObj?.name})`}</div>
     </div>
     
-    {/* 👇 변경된 부분: 기업일 땐 부스, 바이어일 땐 미팅 테이블 표시 */}
+    {/* 👇 수정된 부분: 바이어일 땐 tableNo 데이터도 찾도록 추가! */}
     <div className="text-xs font-bold bg-blue-50 text-blue-700 px-2.5 py-1.5 rounded-lg border border-blue-100">
-      {isComp ? '부스' : '미팅 테이블'}: {targetObj?.booth || targetObj?.table}
+      {isComp ? '부스' : '미팅 테이블'}: {targetObj?.booth || targetObj?.tableNo || '미정'}
     </div>
     
   </div>
