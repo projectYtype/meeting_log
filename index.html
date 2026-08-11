@@ -136,7 +136,7 @@
       const customFieldsConfig = currentEvent?.config?.customFields || defaultCustomFields;
 
       useEffect(() => {
-        const timer = setInterval(() => setNow(new Date()), 20000); // 20초마다 갱신
+        const timer = setInterval(() => setNow(new Date()), 1000); // 20초마다 갱신
         return () => clearInterval(timer);
       }, []);
 
@@ -212,7 +212,7 @@
         };
         
         fetchGAS();
-        const interval = setInterval(fetchGAS, 15000);
+        const interval = setInterval(fetchGAS, 5000);
         return () => clearInterval(interval);
       }, [loginUser?.id]);
 
