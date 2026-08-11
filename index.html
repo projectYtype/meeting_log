@@ -131,10 +131,6 @@
         { id: 'futureAction', label: '2. 향후 추진 방향', type: 'checkbox', options: '(지속소통) 자료 송부 및 검토, 추가 미팅 제안, 회사 방문, 향후 추진 내용 없음', required: true },
         { id: 'satisfaction', label: '3. 상담회 매칭 만족도', type: 'radio', options: '매우 높음, 높음, 보통, 낮음, 매우 낮음', required: true },
         { id: 'satisfactionReason', label: '만족도 사유 기입', type: 'text', required: true },
-        { id: 'consultAmount', label: '4. 상담금액 (USD) *예시: 10000', type: 'number', required: true },
-        { id: 'contractAmount', label: '4. 계약체결액 (USD) *예시: 5000', type: 'number', required: true },
-        { id: 'promoAmount', label: '4. 계약추진금액 (USD)', type: 'number', required: true },
-        { id: 'otherAchievement', label: '4. 기타 성과 (MOU/MOC/LOI/실계약 등)', type: 'text', required: true }
       ];
       
       const customFieldsConfig = currentEvent?.config?.customFields || defaultCustomFields;
