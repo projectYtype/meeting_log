@@ -215,8 +215,8 @@
           setShowManual(true);
         }
 
-        const fetchGAS = () => {
-          setIsSyncing(true);
+        const fetchGAS = (isInit = false) => {
+          if (isInit) setIsSyncing(true); // 최초 1회만 '연결 중...' 상태를 켬
           fetch(`${GAS_URL}?t=${Date.now()}`)
             .then(res => res.json())
             .then(data => processLoadedData(data, loginUser))
@@ -226,8 +226,8 @@
             });
         };
         
-        fetchGAS();
-        const interval = setInterval(fetchGAS, 5000);
+        fetchGAS(true);
+        const interval = setInterval(() => fetchGAS(false), 5000); // 이후 5초마다 갱신할 땐 로딩 표시 안 함
         return () => clearInterval(interval);
       }, [loginUser?.id]);
 
@@ -331,7 +331,8 @@
               return;
             }
 
-            let userAcc = accounts.find(a => a.username === inputId && a.password === inputPw);
+            // 숫자형으로 넘어온 데이터도 문자로 강제 변환하여 정확히 비교하도록 String() 추가
+            let userAcc = accounts.find(a => String(a.username) === inputId && String(a.password) === inputPw);
             if (userAcc) {
               if (userAcc.role !== 'interpreter' && userAcc.role !== 'admin') {
                 setLoginError('스케줄 매니저는 통역사 또는 관리자 계정만 이용 가능합니다.');
