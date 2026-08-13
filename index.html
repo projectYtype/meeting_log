@@ -87,7 +87,7 @@
     
     const App = () => {
       
-      // --- 상태 관리 ---
+     // --- 상태 관리 ---
       const [loginUser, setLoginUser] = useState(() => {
         try {
           return JSON.parse(localStorage.getItem('b2b_v2_interp_session'));
@@ -96,6 +96,21 @@
       const [loginInput, setLoginInput] = useState({ id: '', pw: '' });
       const [loginError, setLoginError] = useState('');
       
+      // =====================================================================
+      // 💡 [여기에 추가] URL 파라미터(?id=...&pw=...)를 읽어서 로그인 인풋에 자동 세팅
+      useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const urlId = params.get('id');
+        const urlPw = params.get('pw');
+        if (urlId || urlPw) {
+          setLoginInput({ 
+            id: urlId || '', 
+            pw: urlPw || '' 
+          });
+        }
+      }, []);
+      // =====================================================================
+
       const [eventsDB, setEventsDB] = useState({});
       const [accountsDB, setAccountsDB] = useState([]);
       const [eventId, setEventId] = useState('');
