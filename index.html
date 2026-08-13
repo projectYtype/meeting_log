@@ -289,87 +289,72 @@
 
       const handleLogin = (e) => {
         e.preventDefault();
-        setIsSyncing(true);
         setLoginError('');
         
         const inputId = loginInput.id.trim();
         const inputPw = loginInput.pw.trim();
         if (!inputId || !inputPw) {
           setLoginError('아이디와 비밀번호를 입력해주세요.');
-          setIsSyncing(false);
           return;
         }
 
-        fetch(`${GAS_URL}?t=${Date.now()}`)
-          .then(res => res.json())
-          .then(data => {
-            const accounts = data.accounts || data.__accounts || [];
-            const realEvents = data.events || {};
+        // 초기 데이터 로딩 중 무리하게 로그인을 시도하는 경우 방어
+        if (isSyncing && accountsDB.length === 0) {
+          setLoginError('데이터를 동기화하고 있습니다. 잠시 후 다시 시도해주세요.');
+          return;
+        }
 
-            if (inputId === 'Bridging' && inputPw === 'bridging1004!!') {
-              const eventKeys = Object.keys(realEvents);
-              if (eventKeys.length === 0) {
-                setLoginError('시트에 등록된 행사 데이터가 없습니다. 마스터 앱에서 행사를 먼저 생성해 주세요.');
-                setIsSyncing(false);
-                return;
-              }
-              const user = { 
-                id: 'Bridging', 
-                role: 'admin', 
-                assignedTargets: {},
-                assignedEvents: eventKeys
-              };
-              setLoginUser(user);
-              localStorage.setItem('b2b_v2_interp_session', JSON.stringify(user));
-              setAccountsDB(accounts);
-              setEventsDB(realEvents);
-              
-              const firstEventId = eventKeys[0];
-              setEventId(firstEventId);
-              setCurrentEvent(realEvents[firstEventId]);
-              setIsSyncing(false);
-              return;
-            }
+        // 최고 관리자 계정 처리
+        if (inputId === 'Bridging' && inputPw === 'bridging1004!!') {
+          const eventKeys = Object.keys(eventsDB);
+          if (eventKeys.length === 0) {
+            setLoginError('시트에 등록된 행사 데이터가 없습니다. 마스터 앱에서 행사를 먼저 생성해 주세요.');
+            return;
+          }
+          const user = { 
+            id: 'Bridging', 
+            role: 'admin', 
+            assignedTargets: {},
+            assignedEvents: eventKeys
+          };
+          setLoginUser(user);
+          localStorage.setItem('b2b_v2_interp_session', JSON.stringify(user));
+          
+          const firstEventId = eventKeys[0];
+          setEventId(firstEventId);
+          setCurrentEvent(eventsDB[firstEventId]);
+          return;
+        }
 
-            // 숫자형으로 넘어온 데이터도 문자로 강제 변환하여 정확히 비교하도록 String() 추가
-            let userAcc = accounts.find(a => String(a.username) === inputId && String(a.password) === inputPw);
-            if (userAcc) {
-              if (userAcc.role !== 'interpreter' && userAcc.role !== 'admin') {
-                setLoginError('스케줄 매니저는 통역사 또는 관리자 계정만 이용 가능합니다.');
-                setIsSyncing(false);
-                return;
-              }
+        // 💡 통신(fetch) 없이 백그라운드에서 이미 로드된 accountsDB를 사용해 즉시 검증
+        let userAcc = accountsDB.find(a => String(a.username) === inputId && String(a.password) === inputPw);
+        if (userAcc) {
+          if (userAcc.role !== 'interpreter' && userAcc.role !== 'admin') {
+            setLoginError('스케줄 매니저는 통역사 또는 관리자 계정만 이용 가능합니다.');
+            return;
+          }
 
-              const user = { 
-                id: userAcc.username, 
-                role: userAcc.role, 
-                assignedTargets: userAcc.assignedTargets || {},
-                assignedEvents: userAcc.assignedEvents || []
-              };
-              if (user.role === 'interpreter' && (!user.assignedEvents || user.assignedEvents.length === 0)) {
-                setLoginError('배정된 행사가 없는 통역사 계정입니다. 마스터 앱 권한설정에서 행사를 먼저 배정해주세요.');
-                setIsSyncing(false);
-                return;
-              }
+          const user = { 
+            id: userAcc.username, 
+            role: userAcc.role, 
+            assignedTargets: userAcc.assignedTargets || {},
+            assignedEvents: userAcc.assignedEvents || []
+          };
+          
+          if (user.role === 'interpreter' && (!user.assignedEvents || user.assignedEvents.length === 0)) {
+            setLoginError('배정된 행사가 없는 통역사 계정입니다. 마스터 앱 권한설정에서 행사를 먼저 배정해주세요.');
+            return;
+          }
 
-              setLoginUser(user);
-              localStorage.setItem('b2b_v2_interp_session', JSON.stringify(user));
-              setAccountsDB(accounts);
-              setEventsDB(realEvents);
-              
-              const targetEventId = user.assignedEvents[user.assignedEvents.length - 1];
-              setEventId(targetEventId);
-              setCurrentEvent(realEvents[targetEventId] || null);
-            } else {
-              setLoginError('아이디 또는 비밀번호가 올바르지 않습니다.');
-            }
-            setIsSyncing(false);
-          })
-          .catch(err => {
-            console.error("통신 에러 원인:", err);
-            setLoginError('서버 연결 실패. 네트워크 상태나 배포 URL을 확인하세요.');
-            setIsSyncing(false);
-          });
+          setLoginUser(user);
+          localStorage.setItem('b2b_v2_interp_session', JSON.stringify(user));
+          
+          const targetEventId = user.assignedEvents[user.assignedEvents.length - 1];
+          setEventId(targetEventId);
+          setCurrentEvent(eventsDB[targetEventId] || null);
+        } else {
+          setLoginError('아이디 또는 비밀번호가 올바르지 않습니다.');
+        }
       };
       
       const handleLogout = () => {
